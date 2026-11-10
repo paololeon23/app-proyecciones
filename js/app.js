@@ -584,6 +584,7 @@ QB.App = (() => {
         state.cartilla.samples[state.muestraIndex][id] = inp.value;
         saveDraft_();
       });
+      inp.addEventListener("focus", () => keepInputVisible_(inp));
     });
     const obs = $("#cartilla-obs");
     if (obs) {
@@ -591,6 +592,71 @@ QB.App = (() => {
         state.cartilla.observacion = obs.value;
         saveDraft_();
       });
+      obs.addEventListener("focus", () => keepInputVisible_(obs));
+    }
+  }
+
+  function updateKeyboardInset_() {
+    const vv = window.visualViewport;
+    let kb = 0;
+    if (vv) {
+      kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    }
+    document.documentElement.style.setProperty("--kb-inset", `${kb}px`);
+    document.body.classList.toggle("kb-open", kb > 80);
+    return kb;
+  }
+
+  function keepInputVisible_(el) {
+    if (!el) return;
+    const run = () => {
+      updateKeyboardInset_();
+      try {
+        el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      } catch (_) {
+        try {
+          el.scrollIntoView(true);
+        } catch (__) {}
+      }
+    };
+    run();
+    setTimeout(run, 80);
+    setTimeout(run, 280);
+  }
+
+  function setupKeyboardAwareScroll_() {
+    if (setupKeyboardAwareScroll_._done) return;
+    setupKeyboardAwareScroll_._done = true;
+    document.addEventListener(
+      "focusin",
+      (e) => {
+        const t = e.target;
+        if (!t || !t.matches) return;
+        if (t.matches("input, textarea, [contenteditable='true']")) keepInputVisible_(t);
+      },
+      true
+    );
+    document.addEventListener(
+      "focusout",
+      () => {
+        setTimeout(() => {
+          const a = document.activeElement;
+          if (!a || !a.matches || !a.matches("input, textarea")) {
+            document.documentElement.style.setProperty("--kb-inset", "0px");
+            document.body.classList.remove("kb-open");
+          }
+        }, 80);
+      },
+      true
+    );
+    if (window.visualViewport) {
+      const onVv = () => {
+        updateKeyboardInset_();
+        const a = document.activeElement;
+        if (a && a.matches && a.matches("input, textarea")) keepInputVisible_(a);
+      };
+      window.visualViewport.addEventListener("resize", onVv);
+      window.visualViewport.addEventListener("scroll", onVv);
     }
   }
 
@@ -1283,6 +1349,7 @@ QB.App = (() => {
 
   async function init() {
     bind();
+    setupKeyboardAwareScroll_();
     setupInstall();
     updateOnlineUi();
     showScreen("home");

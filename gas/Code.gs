@@ -4,7 +4,7 @@
  * - LockService: un POST a la vez
  * - CacheService + Client ID: anti-duplicado en reintento de red
  * - Marca caché SOLO después de escribir en Sheet
- * - Cada cartilla = 2 filas (una por muestra), nunca pisa
+ * - Cada cartilla = N filas (una por muestra), nunca pisa
  *
  * SETUP:
  * 1) Sheet destino → Extensiones → Apps Script → pega este archivo
@@ -23,6 +23,8 @@ var HEADERS = [
   'N° Ramas',
   'Yema Productiva',
   'Yema Abierta',
+  'Yemas Cerradas',
+  'Muertas',
   'Botón Floral',
   'Flor',
   'Cuaja',
@@ -50,6 +52,8 @@ var NUMERIC_HEADERS = {
   'N° Ramas': true,
   'Yema Productiva': true,
   'Yema Abierta': true,
+  'Yemas Cerradas': true,
+  Muertas: true,
   'Botón Floral': true,
   Flor: true,
   Cuaja: true,

@@ -325,6 +325,7 @@ body.is-desktop .qb-toast-stack {
   overscroll-behavior-y: none;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: calc(24px + var(--kb-inset, 0px));
 }
 
 @keyframes fadeIn {
@@ -3993,7 +3994,17 @@ body[data-qb-screen="cartilla"] > .form-actions {
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   background: #F7F8F7;
-  padding: 12px 0 16px;
+  padding: 12px 0 calc(88px + var(--kb-inset, 0px));
+  scroll-padding-bottom: calc(96px + var(--kb-inset, 0px));
+}
+body.kb-open #screen-cartilla .form-actions.proy-actions {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(110%);
+  transition: transform 0.18s var(--ease), opacity 0.18s var(--ease);
+}
+#screen-cartilla .form-actions.proy-actions {
+  transition: transform 0.18s var(--ease), opacity 0.18s var(--ease);
 }
 .cartilla-row {
   position: relative;
@@ -4032,7 +4043,7 @@ body[data-qb-screen="cartilla"] > .form-actions {
   background: #FFFFFF;
   text-align: center;
   font-weight: 800;
-  font-size: 1.05rem;
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
   outline: none;
   color: var(--qb-forest);
@@ -4067,6 +4078,7 @@ body[data-qb-screen="cartilla"] > .form-actions {
   padding: 10px 12px;
   background: #FFFFFF;
   font-weight: 650;
+  font-size: 16px;
   resize: vertical;
   min-height: 72px;
   color: var(--qb-slate);
