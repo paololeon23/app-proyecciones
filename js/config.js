@@ -6,7 +6,7 @@ QB.CONFIG = {
   _ep: "",
   API_URL: "",
   APP_NAME: "Q Berries · Proyecciones",
-  VERSION: "1.2.7",
+  VERSION: "1.2.8",
   PUBLIC_URL: "https://app-proyecciones.netlify.app",
   /** Muestras iniciales al crear cartilla (se pueden agregar más en campo) */
   SAMPLE_START: 1,

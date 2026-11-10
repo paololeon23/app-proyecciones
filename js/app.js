@@ -601,7 +601,7 @@ QB.App = (() => {
         state.cartilla.samples[state.muestraIndex][id] = inp.value;
         saveDraft_();
       });
-      // Enter / siguiente: saltar sin soltar el teclado ni mover el scroll
+      // Enter / siguiente: saltar sin soltar el teclado
       inp.addEventListener("keydown", (e) => {
         if (e.key !== "Enter") return;
         e.preventDefault();
@@ -620,7 +620,7 @@ QB.App = (() => {
 
   /**
    * Como Calidad: JS solo escribe --kb. La barra (en body) sube/baja por CSS.
-   * Delay 220ms al bajar → al pasar input→input no parpadea.
+   * Además hace scroll del campo activo para que E4/E5/Observación no queden bajo GUARDAR.
    */
   function bindKeyboardBar_() {
     if (bindKeyboardBar_._done) return;
@@ -630,6 +630,7 @@ QB.App = (() => {
     let held = -1;
     let raf = 0;
     let dropTimer = 0;
+    let revealTimer = 0;
 
     resetKeyboardBar_ = () => {
       if (dropTimer) {
@@ -666,6 +667,32 @@ QB.App = (() => {
       return vkH > 40 ? vkH : 0;
     }
 
+    /** Sube el scroll para que el campo quede arriba de GUARDAR (+ teclado) */
+    function revealFocusedField_() {
+      if (!formInputFocused_()) return;
+      const el = document.activeElement;
+      const scroller = document.getElementById("cartilla-fields");
+      if (!el || !scroller) return;
+      const wrap = el.closest(".cartilla-row, .cartilla-obs") || el;
+      const bar = document.querySelector("body > .form-actions.proy-cartilla");
+      const barH = bar ? bar.getBoundingClientRect().height : 72;
+      const kb = Math.max(0, held > 0 ? held : liveInset_());
+      const limit = window.innerHeight - kb - barH - 14;
+      const rect = wrap.getBoundingClientRect();
+      if (rect.bottom > limit) {
+        scroller.scrollTop += rect.bottom - limit;
+      } else if (rect.top < 10) {
+        scroller.scrollTop += rect.top - 10;
+      }
+    }
+
+    function scheduleReveal_() {
+      clearTimeout(revealTimer);
+      revealTimer = setTimeout(revealFocusedField_, 60);
+      // Segunda pasada cuando el teclado ya midió altura
+      setTimeout(revealFocusedField_, 280);
+    }
+
     function paint_() {
       raf = 0;
       const px = liveInset_();
@@ -674,9 +701,12 @@ QB.App = (() => {
           clearTimeout(dropTimer);
           dropTimer = 0;
         }
-        if (px === held) return;
+        const changed = px !== held;
         held = px;
-        root.style.setProperty("--kb", px + "px");
+        if (changed) {
+          root.style.setProperty("--kb", px + "px");
+          scheduleReveal_();
+        }
         return;
       }
       if (held <= 0 || dropTimer) return;
@@ -705,7 +735,17 @@ QB.App = (() => {
       window.visualViewport.addEventListener("scroll", onPaint, { passive: true });
     }
     window.addEventListener("resize", onPaint, { passive: true });
-    document.addEventListener("focusin", onPaint, true);
+    document.addEventListener(
+      "focusin",
+      (e) => {
+        const t = e.target;
+        if (t && t.closest && t.closest("#cartilla-fields") && t.matches && t.matches("input, textarea")) {
+          scheduleReveal_();
+        }
+        onPaint();
+      },
+      true
+    );
     document.addEventListener("focusout", onPaint, true);
     paint_();
   }

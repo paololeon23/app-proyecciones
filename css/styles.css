@@ -3781,8 +3781,9 @@ html.precise-open body {
 #screen-home .home-list-wrap {
   padding-bottom: calc(88px + var(--safe-bottom));
 }
+/* Como Calidad #screen-form .form-body: espacio para barra + teclado */
 #screen-cartilla .cartilla-body {
-  padding-bottom: calc(88px + var(--safe-bottom));
+  padding-bottom: calc(120px + var(--kb, 0px) + var(--safe-bottom));
 }
 
 /* Modal CREAR — sheet Q Berries */
@@ -3994,7 +3995,7 @@ html.precise-open body {
   -webkit-overflow-scrolling: touch;
   background: #F7F8F7;
   padding: 12px 0 0;
-  scroll-padding-bottom: calc(96px + var(--safe-bottom));
+  scroll-padding-bottom: calc(120px + var(--kb, 0px) + var(--safe-bottom));
   overflow-anchor: none;
 }
 .cartilla-row {
