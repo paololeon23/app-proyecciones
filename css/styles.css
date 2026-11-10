@@ -3786,8 +3786,8 @@ html.precise-open body {
   flex-shrink: 0;
   transform: translateZ(0);
   backface-visibility: hidden;
-  /* sin animar bottom: al saltar input→input evita el pestañeo del footer */
-  transition: none !important;
+  /* Solo se anima al abrir/cerrar teclado; entre inputs --kb no cambia */
+  transition: bottom 0.22s cubic-bezier(0.22, 0.8, 0.28, 1);
 }
 .form-actions.proy-actions .btn {
   transition: none;
@@ -3797,8 +3797,9 @@ html.precise-open body {
 #screen-home .home-list-wrap {
   padding-bottom: calc(88px + var(--safe-bottom));
 }
+/* Padding fijo (sin --kb): si cambia con el teclado, el panel reflowea y “pestañea” */
 #screen-cartilla .cartilla-body {
-  padding-bottom: calc(88px + var(--kb, 0px) + var(--safe-bottom));
+  padding-bottom: calc(88px + var(--safe-bottom));
 }
 body[data-qb-screen="home"] > .form-actions,
 body[data-qb-screen="cartilla"] > .form-actions {
@@ -4014,7 +4015,7 @@ body[data-qb-screen="cartilla"] > .form-actions {
   -webkit-overflow-scrolling: touch;
   background: #F7F8F7;
   padding: 12px 0 0;
-  scroll-padding-bottom: calc(96px + var(--kb, 0px) + var(--safe-bottom));
+  scroll-padding-bottom: calc(96px + var(--safe-bottom));
   overflow-anchor: none;
 }
 .cartilla-row {

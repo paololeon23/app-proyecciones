@@ -603,31 +603,32 @@ QB.App = (() => {
   }
 
   /**
-   * Teclado overlays-content + --kb estable.
-   * Al pasar de input → input el viewport a veces reporta kb=0 un instante:
-   * eso hacía “pestañear” el footer. Aquí se ignora ese cero mientras
-   * el foco sigue dentro de la cartilla, y se congela el scroll del panel.
+   * GUARDAR sube al abrir teclado y baja al cerrarlo.
+   * Entre inputs NO se toca --kb (queda fijo arriba) → sin parpadeo.
    */
   function setupKeyboardAwareScroll_() {
     if (setupKeyboardAwareScroll_._done) return;
     setupKeyboardAwareScroll_._done = true;
 
     const root = document.documentElement;
+    const OPEN_MIN = 80; // px: umbral “teclado abierto”
     let lastKb = 0;
-    let heldKb = 0;
+    let lockedKb = 0; // altura fija mientras el teclado está en uso
     let raf = 0;
-    let clearTimer = 0;
+    let closeTimer = 0;
     let freezeY = 0;
-    let freezing = false;
+    let hopping = false; // transición input → input
+    let hopTimer = 0;
 
     const isCartillaField_ = (el) =>
       !!(el && el.closest && el.closest("#cartilla-fields") && el.matches && el.matches("input, textarea"));
 
     const setKb_ = (kb) => {
-      if (kb === lastKb) return;
-      lastKb = kb;
-      root.style.setProperty("--kb", kb + "px");
-      root.style.setProperty("--kb-inset", kb + "px");
+      const v = Math.max(0, Math.round(kb));
+      if (v === lastKb) return;
+      lastKb = v;
+      root.style.setProperty("--kb", v + "px");
+      root.style.setProperty("--kb-inset", v + "px");
     };
 
     const readKb_ = () => {
@@ -639,27 +640,37 @@ QB.App = (() => {
     const applyKb_ = () => {
       raf = 0;
       const kb = readKb_();
-      const active = document.activeElement;
+      const inField = isCartillaField_(document.activeElement) || hopping;
 
-      if (kb > 0) {
-        clearTimeout(clearTimer);
-        heldKb = kb;
-        setKb_(kb);
+      if (inField) {
+        clearTimeout(closeTimer);
+        // Primera apertura (o cambio grande p.ej. rotación): subir footer
+        if (kb >= OPEN_MIN) {
+          if (lockedKb < OPEN_MIN || Math.abs(kb - lockedKb) > 100) {
+            lockedKb = kb;
+            setKb_(lockedKb);
+          }
+          // Si ya está bloqueado: NO actualizar → sin pestañeo al cambiar de input
+          return;
+        }
+        // Durante el salto a veces llega kb=0: mantener
+        if (lockedKb >= OPEN_MIN) setKb_(lockedKb);
         return;
       }
 
-      // kb=0: si seguimos en un campo de cartilla (o transición entre ellos), mantener
-      if (isCartillaField_(active) || freezing) {
-        if (heldKb > 0) setKb_(heldKb);
-        return;
-      }
-
-      clearTimeout(clearTimer);
-      clearTimer = setTimeout(() => {
-        if (isCartillaField_(document.activeElement)) return;
-        heldKb = 0;
+      // Salimos de los campos: bajar solo cuando el teclado realmente cerró
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        if (isCartillaField_(document.activeElement) || hopping) return;
+        const now = readKb_();
+        if (now >= OPEN_MIN) {
+          lockedKb = now;
+          setKb_(now);
+          return;
+        }
+        lockedKb = 0;
         setKb_(0);
-      }, 280);
+      }, 180);
     };
 
     const onVv_ = () => {
@@ -675,9 +686,13 @@ QB.App = (() => {
         if (!isCartillaField_(e.target)) return;
         const s = scroller_();
         if (s) freezeY = s.scrollTop;
-        freezing = true;
-        // Mantener --kb durante el salto input→input
-        if (heldKb > 0) setKb_(heldKb);
+        hopping = true;
+        clearTimeout(hopTimer);
+        hopTimer = setTimeout(() => {
+          hopping = false;
+          onVv_();
+        }, 320);
+        if (lockedKb >= OPEN_MIN) setKb_(lockedKb);
       },
       true
     );
@@ -686,22 +701,25 @@ QB.App = (() => {
       "focusin",
       (e) => {
         if (!isCartillaField_(e.target)) {
-          freezing = false;
           onVv_();
           return;
         }
+        clearTimeout(closeTimer);
         const s = scroller_();
-        if (s && freezing) {
+        if (s && hopping) {
           s.scrollTop = freezeY;
           requestAnimationFrame(() => {
             if (s) s.scrollTop = freezeY;
-            freezing = false;
           });
-        } else {
-          freezing = false;
         }
-        if (heldKb > 0) setKb_(heldKb);
-        onVv_();
+        // Seguir en modo teclado abierto: no bajar
+        if (lockedKb >= OPEN_MIN) setKb_(lockedKb);
+        hopping = true;
+        clearTimeout(hopTimer);
+        hopTimer = setTimeout(() => {
+          hopping = false;
+          onVv_();
+        }, 200);
       },
       true
     );
