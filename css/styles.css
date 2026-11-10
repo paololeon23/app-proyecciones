@@ -23,6 +23,8 @@
   --radius-pill: 999px;
   --font: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --kb: 0px;
+  --kb-inset: 0px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -3764,7 +3766,7 @@ html.precise-open body {
 }
 .proy-empty[hidden] { display: none !important; }
 
-/* Footer fijo como Calidad: no se redibuja con el teclado */
+/* Footer fijo como Calidad: overlays-content + --kb (sin reflow del layout) */
 .form-actions.proy-actions {
   display: grid;
   grid-template-columns: 1fr;
@@ -3772,7 +3774,7 @@ html.precise-open body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--kb, 0px);
   width: 100%;
   margin: 0;
   padding: 10px 14px calc(10px + var(--safe-bottom));
@@ -3781,9 +3783,11 @@ html.precise-open body {
   box-shadow: 0 -6px 20px rgba(31, 61, 42, 0.08);
   z-index: 9999;
   isolation: isolate;
-  contain: layout paint style;
   flex-shrink: 0;
-  transition: none;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  /* sin animar bottom: al saltar input→input evita el pestañeo del footer */
+  transition: none !important;
 }
 .form-actions.proy-actions .btn {
   transition: none;
@@ -3794,7 +3798,7 @@ html.precise-open body {
   padding-bottom: calc(88px + var(--safe-bottom));
 }
 #screen-cartilla .cartilla-body {
-  padding-bottom: calc(88px + var(--safe-bottom));
+  padding-bottom: calc(88px + var(--kb, 0px) + var(--safe-bottom));
 }
 body[data-qb-screen="home"] > .form-actions,
 body[data-qb-screen="cartilla"] > .form-actions {
@@ -4010,8 +4014,8 @@ body[data-qb-screen="cartilla"] > .form-actions {
   -webkit-overflow-scrolling: touch;
   background: #F7F8F7;
   padding: 12px 0 0;
-  scroll-padding-bottom: calc(96px + var(--safe-bottom));
-  contain: layout style;
+  scroll-padding-bottom: calc(96px + var(--kb, 0px) + var(--safe-bottom));
+  overflow-anchor: none;
 }
 .cartilla-row {
   position: relative;
@@ -4054,6 +4058,9 @@ body[data-qb-screen="cartilla"] > .form-actions {
   font-variant-numeric: tabular-nums;
   outline: none;
   color: var(--qb-forest);
+  /* sin transition: el focus no debe “pestañear” */
+  transition: none;
+  caret-color: var(--qb-orange);
 }
 .cartilla-row input:focus {
   border-color: var(--qb-orange);
@@ -4089,6 +4096,8 @@ body[data-qb-screen="cartilla"] > .form-actions {
   resize: vertical;
   min-height: 72px;
   color: var(--qb-slate);
+  transition: none;
+  caret-color: var(--qb-orange);
 }
 .cartilla-obs textarea:focus {
   outline: none;

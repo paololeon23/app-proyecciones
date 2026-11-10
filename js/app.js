@@ -575,7 +575,8 @@ QB.App = (() => {
         <textarea id="cartilla-obs" rows="3" placeholder="Opcional">${escapeHtml(c.observacion || "")}</textarea>
       </label>`;
 
-    root.querySelectorAll("input[data-field]").forEach((inp) => {
+    const fieldInputs = [...root.querySelectorAll("input[data-field]")];
+    fieldInputs.forEach((inp, idx) => {
       inp.addEventListener("input", () => {
         const id = inp.dataset.field;
         if (!state.cartilla.samples[state.muestraIndex]) {
@@ -583,6 +584,13 @@ QB.App = (() => {
         }
         state.cartilla.samples[state.muestraIndex][id] = inp.value;
         saveDraft_();
+      });
+      // Enter / siguiente: saltar sin soltar el teclado ni mover el scroll
+      inp.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        const next = fieldInputs[idx + 1] || $("#cartilla-obs");
+        if (next) next.focus({ preventScroll: true });
       });
     });
     const obs = $("#cartilla-obs");
@@ -595,43 +603,115 @@ QB.App = (() => {
   }
 
   /**
-   * Footer GUARDAR fijo (z-index) como Calidad.
-   * Solo un leve ajuste de scroll para Observación; inputs normales no mueven nada
-   * (evita el parpadeo al enfocar).
+   * Teclado overlays-content + --kb estable.
+   * Al pasar de input → input el viewport a veces reporta kb=0 un instante:
+   * eso hacía “pestañear” el footer. Aquí se ignora ese cero mientras
+   * el foco sigue dentro de la cartilla, y se congela el scroll del panel.
    */
-  let kbScrollTimer_ = 0;
-  function keepInputVisible_(el) {
-    if (!el || el.tagName !== "TEXTAREA") return;
-    const wrap = el.closest(".cartilla-obs") || el;
-    const scroller = document.getElementById("cartilla-fields");
-    if (!scroller) return;
-
-    clearTimeout(kbScrollTimer_);
-    kbScrollTimer_ = setTimeout(() => {
-      if (document.activeElement !== el) return;
-      const tRect = wrap.getBoundingClientRect();
-      const sRect = scroller.getBoundingClientRect();
-      const footer = 72;
-      const safeBottom = sRect.bottom - footer;
-      if (tRect.bottom > safeBottom) {
-        scroller.scrollTop += tRect.bottom - safeBottom + 8;
-      }
-    }, 320);
-  }
-
   function setupKeyboardAwareScroll_() {
     if (setupKeyboardAwareScroll_._done) return;
     setupKeyboardAwareScroll_._done = true;
 
+    const root = document.documentElement;
+    let lastKb = 0;
+    let heldKb = 0;
+    let raf = 0;
+    let clearTimer = 0;
+    let freezeY = 0;
+    let freezing = false;
+
+    const isCartillaField_ = (el) =>
+      !!(el && el.closest && el.closest("#cartilla-fields") && el.matches && el.matches("input, textarea"));
+
+    const setKb_ = (kb) => {
+      if (kb === lastKb) return;
+      lastKb = kb;
+      root.style.setProperty("--kb", kb + "px");
+      root.style.setProperty("--kb-inset", kb + "px");
+    };
+
+    const readKb_ = () => {
+      const vv = window.visualViewport;
+      if (!vv) return 0;
+      return Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    };
+
+    const applyKb_ = () => {
+      raf = 0;
+      const kb = readKb_();
+      const active = document.activeElement;
+
+      if (kb > 0) {
+        clearTimeout(clearTimer);
+        heldKb = kb;
+        setKb_(kb);
+        return;
+      }
+
+      // kb=0: si seguimos en un campo de cartilla (o transición entre ellos), mantener
+      if (isCartillaField_(active) || freezing) {
+        if (heldKb > 0) setKb_(heldKb);
+        return;
+      }
+
+      clearTimeout(clearTimer);
+      clearTimer = setTimeout(() => {
+        if (isCartillaField_(document.activeElement)) return;
+        heldKb = 0;
+        setKb_(0);
+      }, 280);
+    };
+
+    const onVv_ = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(applyKb_);
+    };
+
+    const scroller_ = () => document.getElementById("cartilla-fields");
+
     document.addEventListener(
-      "focusin",
+      "focusout",
       (e) => {
-        const t = e.target;
-        if (!t || t.id !== "cartilla-obs") return;
-        keepInputVisible_(t);
+        if (!isCartillaField_(e.target)) return;
+        const s = scroller_();
+        if (s) freezeY = s.scrollTop;
+        freezing = true;
+        // Mantener --kb durante el salto input→input
+        if (heldKb > 0) setKb_(heldKb);
       },
       true
     );
+
+    document.addEventListener(
+      "focusin",
+      (e) => {
+        if (!isCartillaField_(e.target)) {
+          freezing = false;
+          onVv_();
+          return;
+        }
+        const s = scroller_();
+        if (s && freezing) {
+          s.scrollTop = freezeY;
+          requestAnimationFrame(() => {
+            if (s) s.scrollTop = freezeY;
+            freezing = false;
+          });
+        } else {
+          freezing = false;
+        }
+        if (heldKb > 0) setKb_(heldKb);
+        onVv_();
+      },
+      true
+    );
+
+    applyKb_();
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", onVv_, { passive: true });
+      window.visualViewport.addEventListener("scroll", onVv_, { passive: true });
+    }
+    window.addEventListener("resize", onVv_, { passive: true });
   }
 
   async function switchMuestra(dir) {
