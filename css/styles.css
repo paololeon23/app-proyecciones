@@ -3997,27 +3997,12 @@ body[data-qb-screen="cartilla"] > .form-actions {
   -webkit-overflow-scrolling: touch;
   background: #F7F8F7;
   padding: 12px 0 16px;
-  scroll-padding-bottom: 16px;
+  scroll-padding-bottom: 24px;
 }
-/* Teclado abierto: app se ajusta al viewport visible (Android/iOS) */
-body.kb-open .app {
-  height: var(--vv-height, 100%) !important;
-  max-height: var(--vv-height, 100%) !important;
-  transform: translateY(var(--vv-offset, 0px));
-  overflow: hidden;
-}
-body.kb-open #screen-cartilla.active {
-  height: 100%;
-  max-height: 100%;
-}
-body.kb-open .cartilla-body {
-  scroll-padding-bottom: calc(32px + var(--kb-inset, 0px));
-}
+/* Con interactive-widget=resizes-content el layout baja con el teclado (como Calidad).
+   Solo centramos el campo activo; sin huecos inventados. */
 body.kb-open #screen-cartilla .form-actions.proy-actions {
-  display: none !important;
-}
-body.kb-open #screen-cartilla .muestra-bar {
-  display: none;
+  flex-shrink: 0;
 }
 .cartilla-row {
   position: relative;
