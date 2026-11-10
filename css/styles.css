@@ -3764,18 +3764,37 @@ html.precise-open body {
 }
 .proy-empty[hidden] { display: none !important; }
 
+/* Footer fijo como Calidad: no se redibuja con el teclado */
 .form-actions.proy-actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 0;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  margin: 0;
   padding: 10px 14px calc(10px + var(--safe-bottom));
-  background: rgba(255, 255, 255, 0.94);
+  background: #FFFFFF;
   border-top: 1px solid var(--qb-line);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 -6px 20px rgba(31, 61, 42, 0.08);
+  z-index: 9999;
+  isolation: isolate;
+  contain: layout paint style;
   flex-shrink: 0;
-  position: relative;
-  z-index: 5;
+  transition: none;
+}
+.form-actions.proy-actions .btn {
+  transition: none;
+  animation: none;
+}
+#screen-home .panel-scroll,
+#screen-home .home-list-wrap {
+  padding-bottom: calc(88px + var(--safe-bottom));
+}
+#screen-cartilla .cartilla-body {
+  padding-bottom: calc(88px + var(--safe-bottom));
 }
 body[data-qb-screen="home"] > .form-actions,
 body[data-qb-screen="cartilla"] > .form-actions {
@@ -3990,10 +4009,10 @@ body[data-qb-screen="cartilla"] > .form-actions {
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   background: #F7F8F7;
-  padding: 12px 0 16px;
-  scroll-padding-bottom: 24px;
+  padding: 12px 0 0;
+  scroll-padding-bottom: calc(96px + var(--safe-bottom));
+  contain: layout style;
 }
-/* Teclado: interactive-widget=resizes-content (meta viewport). Sin clases que redibujen. */
 .cartilla-row {
   position: relative;
   display: grid;
