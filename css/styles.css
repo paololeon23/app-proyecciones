@@ -3999,17 +3999,25 @@ body[data-qb-screen="cartilla"] > .form-actions {
   padding: 12px 0 16px;
   scroll-padding-bottom: 16px;
 }
+/* Teclado abierto: app se ajusta al viewport visible (Android/iOS) */
+body.kb-open .app {
+  height: var(--vv-height, 100%) !important;
+  max-height: var(--vv-height, 100%) !important;
+  transform: translateY(var(--vv-offset, 0px));
+  overflow: hidden;
+}
+body.kb-open #screen-cartilla.active {
+  height: 100%;
+  max-height: 100%;
+}
 body.kb-open .cartilla-body {
-  scroll-padding-bottom: calc(24px + var(--kb-inset, 0px));
+  scroll-padding-bottom: calc(32px + var(--kb-inset, 0px));
 }
 body.kb-open #screen-cartilla .form-actions.proy-actions {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(110%);
-  transition: transform 0.16s var(--ease), opacity 0.16s var(--ease);
+  display: none !important;
 }
-#screen-cartilla .form-actions.proy-actions {
-  transition: transform 0.16s var(--ease), opacity 0.16s var(--ease);
+body.kb-open #screen-cartilla .muestra-bar {
+  display: none;
 }
 .cartilla-row {
   position: relative;

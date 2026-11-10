@@ -596,99 +596,122 @@ QB.App = (() => {
     }
   }
 
+  let kbBaseH_ = 0;
+  let kbFocusEl_ = null;
+
+  function captureKbBase_() {
+    const vv = window.visualViewport;
+    kbBaseH_ = Math.round((vv && vv.height) || window.innerHeight || 0);
+  }
+
   function updateKeyboardInset_() {
     const vv = window.visualViewport;
-    let kb = 0;
-    if (vv) {
-      kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-    } else if (window.innerHeight) {
-      // fallback aproximado
-      kb = 0;
+    const vvH = Math.round((vv && vv.height) || window.innerHeight || 0);
+    const vvTop = Math.round((vv && vv.offsetTop) || 0);
+    const base = kbBaseH_ || Math.round(window.innerHeight || vvH);
+    let kb = Math.max(0, base - vvH);
+
+    // Android PWA: a veces el teclado tapa sin achicar el viewport → estima
+    if (kbFocusEl_ && kb < 100) {
+      kb = Math.max(kb, Math.round(base * 0.46));
     }
+
     document.documentElement.style.setProperty("--kb-inset", `${kb}px`);
-    document.body.classList.toggle("kb-open", kb > 60);
+    document.documentElement.style.setProperty("--vv-height", `${Math.max(vvH, 200)}px`);
+    document.documentElement.style.setProperty("--vv-offset", `${vvTop}px`);
+    document.body.classList.toggle("kb-open", !!(kbFocusEl_ || kb > 80));
     return kb;
   }
 
   function keepInputVisible_(el) {
     if (!el) return;
+    kbFocusEl_ = el;
+    if (!kbBaseH_) captureKbBase_();
+    document.body.classList.add("kb-open");
+
     const run = () => {
       const kb = updateKeyboardInset_();
       const scroller =
         el.closest(".cartilla-body, .panel-scroll") || document.getElementById("cartilla-fields");
       const wrap = el.closest(".cartilla-obs, .cartilla-row") || el;
+      const isObs = el.id === "cartilla-obs" || el.tagName === "TEXTAREA";
 
-      // Solo mientras el teclado está abierto: espacio temporal para poder scrollear
       if (scroller) {
-        if (kb > 60) {
-          const extra = kb + (el.tagName === "TEXTAREA" ? 72 : 40);
-          scroller.style.paddingBottom = `${extra}px`;
-        } else {
-          scroller.style.paddingBottom = "";
+        scroller.style.paddingBottom = `${Math.max(kb + 16, isObs ? 180 : 100)}px`;
+        // Sube el bloque activo a la zona visible (arriba del teclado)
+        const targetTop = Math.max(0, (wrap.offsetTop || 0) - (isObs ? 8 : 20));
+        scroller.scrollTop = targetTop;
+
+        // Ajuste fino con coords reales
+        const tRect = wrap.getBoundingClientRect();
+        const vv = window.visualViewport;
+        const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+        const safeBottom = visibleBottom - (isObs ? 20 : 12);
+        if (tRect.bottom > safeBottom) {
+          scroller.scrollTop += tRect.bottom - safeBottom + 12;
         }
-      }
-
-      if (!scroller) {
+      } else {
         try {
-          wrap.scrollIntoView({ block: "center", inline: "nearest" });
+          wrap.scrollIntoView({ block: "start", inline: "nearest" });
         } catch (_) {}
-        return;
       }
-
-      if (kb <= 60) return;
-
-      const sRect = scroller.getBoundingClientRect();
-      const tRect = wrap.getBoundingClientRect();
-      const vv = window.visualViewport;
-      const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      const safeBottom = visibleBottom - (el.tagName === "TEXTAREA" ? 24 : 16);
-      const safeTop = sRect.top + 10;
-
-      let delta = 0;
-      if (tRect.bottom > safeBottom) delta = tRect.bottom - safeBottom + 12;
-      else if (tRect.top < safeTop) delta = tRect.top - safeTop;
-      if (delta) scroller.scrollTop += delta;
     };
 
     run();
     requestAnimationFrame(run);
-    setTimeout(run, 120);
-    setTimeout(run, 320);
-    setTimeout(run, 520);
+    setTimeout(run, 50);
+    setTimeout(run, 150);
+    setTimeout(run, 350);
+    setTimeout(run, 600);
+  }
+
+  function clearKeyboardMode_() {
+    kbFocusEl_ = null;
+    kbBaseH_ = 0;
+    document.documentElement.style.setProperty("--kb-inset", "0px");
+    document.documentElement.style.setProperty("--vv-height", "");
+    document.documentElement.style.setProperty("--vv-offset", "0px");
+    document.body.classList.remove("kb-open");
+    document.querySelectorAll(".cartilla-body, #cartilla-fields").forEach((el) => {
+      el.style.paddingBottom = "";
+    });
   }
 
   function setupKeyboardAwareScroll_() {
     if (setupKeyboardAwareScroll_._done) return;
     setupKeyboardAwareScroll_._done = true;
+
+    captureKbBase_();
+    window.addEventListener("resize", () => {
+      if (!kbFocusEl_) captureKbBase_();
+    });
+
     document.addEventListener(
       "focusin",
       (e) => {
         const t = e.target;
         if (!t || !t.matches) return;
-        if (t.matches("input, textarea, [contenteditable='true']")) keepInputVisible_(t);
+        if (!t.matches("input, textarea, [contenteditable='true']")) return;
+        if (!kbFocusEl_) captureKbBase_();
+        keepInputVisible_(t);
       },
       true
     );
+
     document.addEventListener(
       "focusout",
       () => {
         setTimeout(() => {
           const a = document.activeElement;
-          if (!a || !a.matches || !a.matches("input, textarea")) {
-            document.documentElement.style.setProperty("--kb-inset", "0px");
-            document.body.classList.remove("kb-open");
-            document.querySelectorAll(".cartilla-body, #cartilla-fields").forEach((el) => {
-              el.style.paddingBottom = "";
-            });
-          }
-        }, 120);
+          if (!a || !a.matches || !a.matches("input, textarea")) clearKeyboardMode_();
+        }, 80);
       },
       true
     );
+
     if (window.visualViewport) {
       const onVv = () => {
-        const a = document.activeElement;
-        if (a && a.matches && a.matches("input, textarea")) keepInputVisible_(a);
+        if (kbFocusEl_) keepInputVisible_(kbFocusEl_);
         else updateKeyboardInset_();
       };
       window.visualViewport.addEventListener("resize", onVv);
