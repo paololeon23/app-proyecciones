@@ -2069,6 +2069,8 @@ body.is-desktop .qb-toast-stack {
 body > .form-actions { display: none; }
 body[data-qb-screen="form"] > .form-actions:not(.dual) { display: grid; }
 body[data-qb-screen="resumen"] > .form-actions.dual { display: grid; }
+body[data-qb-screen="home"] > .form-actions.proy-home { display: grid; }
+body[data-qb-screen="cartilla"] > .form-actions.proy-cartilla { display: grid; }
 #screen-form .form-body {
   padding-bottom: calc(120px + var(--kb, 0px) + var(--safe-bottom));
 }
@@ -3766,44 +3768,21 @@ html.precise-open body {
 }
 .proy-empty[hidden] { display: none !important; }
 
-/* Footer fijo como Calidad: overlays-content + --kb (sin reflow del layout) */
+/* Proyecciones: misma barra fija en body que Calidad (.form-actions + --kb) */
 .form-actions.proy-actions {
-  display: grid;
   grid-template-columns: 1fr;
   gap: 0;
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: var(--kb, 0px);
-  width: 100%;
-  margin: 0;
   padding: 10px 14px calc(10px + var(--safe-bottom));
-  background: #FFFFFF;
-  border-top: 1px solid var(--qb-line);
-  box-shadow: 0 -6px 20px rgba(31, 61, 42, 0.08);
-  z-index: 9999;
-  isolation: isolate;
-  flex-shrink: 0;
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  /* Solo se anima al abrir/cerrar teclado; entre inputs --kb no cambia */
-  transition: bottom 0.22s cubic-bezier(0.22, 0.8, 0.28, 1);
 }
-.form-actions.proy-actions .btn {
-  transition: none;
-  animation: none;
+.form-actions.proy-home {
+  bottom: 0; /* CREAR no sube con teclado */
 }
 #screen-home .panel-scroll,
 #screen-home .home-list-wrap {
   padding-bottom: calc(88px + var(--safe-bottom));
 }
-/* Padding fijo (sin --kb): si cambia con el teclado, el panel reflowea y “pestañea” */
 #screen-cartilla .cartilla-body {
   padding-bottom: calc(88px + var(--safe-bottom));
-}
-body[data-qb-screen="home"] > .form-actions,
-body[data-qb-screen="cartilla"] > .form-actions {
-  display: none;
 }
 
 /* Modal CREAR — sheet Q Berries */

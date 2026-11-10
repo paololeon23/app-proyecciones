@@ -225,11 +225,27 @@ QB.App = (() => {
     el.hidden = !on;
   }
 
+  let resetKeyboardBar_ = () => {
+    document.documentElement.style.setProperty("--kb", "0px");
+  };
+
   /* ——— Screens ——— */
   function showScreen(id) {
     state.screen = id;
     $$(".screen").forEach((s) => s.classList.toggle("active", s.id === `screen-${id}`));
     document.body.dataset.qbScreen = id;
+    // Salir de cartilla: bajar barra (como Calidad)
+    if (id !== "cartilla") resetKeyboardBar_();
+  }
+
+  /** Saca las barras a body: si viven dentro del screen (overflow:hidden), Android las recorta/repinta */
+  function mountActionBars_() {
+    document
+      .querySelectorAll("#screen-home > .form-actions, #screen-cartilla > .form-actions")
+      .forEach((bar) => {
+        document.body.appendChild(bar);
+      });
+    document.body.dataset.qbScreen = state.screen || "home";
   }
 
   /* ——— Local list (historial de cartillas guardadas) ——— */
@@ -603,133 +619,95 @@ QB.App = (() => {
   }
 
   /**
-   * GUARDAR sube al abrir teclado y baja al cerrarlo.
-   * Entre inputs NO se toca --kb (queda fijo arriba) → sin parpadeo.
+   * Como Calidad: JS solo escribe --kb. La barra (en body) sube/baja por CSS.
+   * Delay 220ms al bajar → al pasar input→input no parpadea.
    */
-  function setupKeyboardAwareScroll_() {
-    if (setupKeyboardAwareScroll_._done) return;
-    setupKeyboardAwareScroll_._done = true;
+  function bindKeyboardBar_() {
+    if (bindKeyboardBar_._done) return;
+    bindKeyboardBar_._done = true;
 
     const root = document.documentElement;
-    const OPEN_MIN = 80; // px: umbral “teclado abierto”
-    let lastKb = 0;
-    let lockedKb = 0; // altura fija mientras el teclado está en uso
+    let held = -1;
     let raf = 0;
-    let closeTimer = 0;
-    let freezeY = 0;
-    let hopping = false; // transición input → input
-    let hopTimer = 0;
+    let dropTimer = 0;
 
-    const isCartillaField_ = (el) =>
-      !!(el && el.closest && el.closest("#cartilla-fields") && el.matches && el.matches("input, textarea"));
-
-    const setKb_ = (kb) => {
-      const v = Math.max(0, Math.round(kb));
-      if (v === lastKb) return;
-      lastKb = v;
-      root.style.setProperty("--kb", v + "px");
-      root.style.setProperty("--kb-inset", v + "px");
+    resetKeyboardBar_ = () => {
+      if (dropTimer) {
+        clearTimeout(dropTimer);
+        dropTimer = 0;
+      }
+      held = 0;
+      root.style.setProperty("--kb", "0px");
     };
 
-    const readKb_ = () => {
+    function formInputFocused_() {
+      if (document.querySelector(".create-modal.open, .overlay.open")) return false;
+      if (state.screen !== "cartilla") return false;
+      const el = document.activeElement;
+      if (!el || !el.matches) return false;
+      if (el.closest("#precise-overlay, .overlay, .create-modal")) return false;
+      if (!el.closest("#cartilla-fields")) return false;
+      return el.matches(
+        "input:not([type=hidden]):not([type=button]):not([type=checkbox]):not([type=radio]), textarea"
+      );
+    }
+
+    function liveInset_() {
+      if (!formInputFocused_()) return 0;
       const vv = window.visualViewport;
-      if (!vv) return 0;
-      return Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-    };
+      let gap = 0;
+      if (vv) {
+        gap = Math.round(window.innerHeight - (vv.offsetTop || 0) - vv.height);
+        if (gap < 48) gap = 0;
+      }
+      const vk = navigator.virtualKeyboard;
+      const vkH = vk && vk.boundingRect ? Math.round(vk.boundingRect.height) : 0;
+      if (gap > 0) return gap;
+      return vkH > 40 ? vkH : 0;
+    }
 
-    const applyKb_ = () => {
+    function paint_() {
       raf = 0;
-      const kb = readKb_();
-      const inField = isCartillaField_(document.activeElement) || hopping;
-
-      if (inField) {
-        clearTimeout(closeTimer);
-        // Primera apertura (o cambio grande p.ej. rotación): subir footer
-        if (kb >= OPEN_MIN) {
-          if (lockedKb < OPEN_MIN || Math.abs(kb - lockedKb) > 100) {
-            lockedKb = kb;
-            setKb_(lockedKb);
-          }
-          // Si ya está bloqueado: NO actualizar → sin pestañeo al cambiar de input
-          return;
+      const px = liveInset_();
+      if (px > 0) {
+        if (dropTimer) {
+          clearTimeout(dropTimer);
+          dropTimer = 0;
         }
-        // Durante el salto a veces llega kb=0: mantener
-        if (lockedKb >= OPEN_MIN) setKb_(lockedKb);
+        if (px === held) return;
+        held = px;
+        root.style.setProperty("--kb", px + "px");
         return;
       }
-
-      // Salimos de los campos: bajar solo cuando el teclado realmente cerró
-      clearTimeout(closeTimer);
-      closeTimer = setTimeout(() => {
-        if (isCartillaField_(document.activeElement) || hopping) return;
-        const now = readKb_();
-        if (now >= OPEN_MIN) {
-          lockedKb = now;
-          setKb_(now);
-          return;
-        }
-        lockedKb = 0;
-        setKb_(0);
-      }, 180);
-    };
-
-    const onVv_ = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(applyKb_);
-    };
-
-    const scroller_ = () => document.getElementById("cartilla-fields");
-
-    document.addEventListener(
-      "focusout",
-      (e) => {
-        if (!isCartillaField_(e.target)) return;
-        const s = scroller_();
-        if (s) freezeY = s.scrollTop;
-        hopping = true;
-        clearTimeout(hopTimer);
-        hopTimer = setTimeout(() => {
-          hopping = false;
-          onVv_();
-        }, 320);
-        if (lockedKb >= OPEN_MIN) setKb_(lockedKb);
-      },
-      true
-    );
-
-    document.addEventListener(
-      "focusin",
-      (e) => {
-        if (!isCartillaField_(e.target)) {
-          onVv_();
-          return;
-        }
-        clearTimeout(closeTimer);
-        const s = scroller_();
-        if (s && hopping) {
-          s.scrollTop = freezeY;
-          requestAnimationFrame(() => {
-            if (s) s.scrollTop = freezeY;
-          });
-        }
-        // Seguir en modo teclado abierto: no bajar
-        if (lockedKb >= OPEN_MIN) setKb_(lockedKb);
-        hopping = true;
-        clearTimeout(hopTimer);
-        hopTimer = setTimeout(() => {
-          hopping = false;
-          onVv_();
-        }, 200);
-      },
-      true
-    );
-
-    applyKb_();
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", onVv_, { passive: true });
-      window.visualViewport.addEventListener("scroll", onVv_, { passive: true });
+      if (held <= 0 || dropTimer) return;
+      dropTimer = setTimeout(() => {
+        dropTimer = 0;
+        if (liveInset_() > 0) return;
+        held = 0;
+        root.style.setProperty("--kb", "0px");
+      }, 220);
     }
-    window.addEventListener("resize", onVv_, { passive: true });
+
+    const onPaint = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(paint_);
+    };
+
+    try {
+      if (navigator.virtualKeyboard) {
+        navigator.virtualKeyboard.overlaysContent = true;
+        navigator.virtualKeyboard.addEventListener("geometrychange", onPaint);
+      }
+    } catch (_) {}
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", onPaint, { passive: true });
+      window.visualViewport.addEventListener("scroll", onPaint, { passive: true });
+    }
+    window.addEventListener("resize", onPaint, { passive: true });
+    document.addEventListener("focusin", onPaint, true);
+    document.addEventListener("focusout", onPaint, true);
+    paint_();
   }
 
   async function switchMuestra(dir) {
@@ -1420,8 +1398,9 @@ QB.App = (() => {
   }
 
   async function init() {
+    mountActionBars_();
     bind();
-    setupKeyboardAwareScroll_();
+    bindKeyboardBar_();
     setupInstall();
     updateOnlineUi();
     showScreen("home");
