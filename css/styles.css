@@ -3910,6 +3910,7 @@ body[data-qb-screen="cartilla"] > .form-actions {
 
 /* Cartilla — fondo blanco + lateral naranja */
 #screen-cartilla {
+  position: relative;
   background: #FFFFFF;
 }
 .cartilla-toolbar {
@@ -3991,20 +3992,24 @@ body[data-qb-screen="cartilla"] > .form-actions {
 
 .cartilla-body {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   background: #F7F8F7;
-  padding: 12px 0 calc(88px + var(--kb-inset, 0px));
-  scroll-padding-bottom: calc(96px + var(--kb-inset, 0px));
+  padding: 12px 0 16px;
+  scroll-padding-bottom: 16px;
+}
+body.kb-open .cartilla-body {
+  scroll-padding-bottom: calc(24px + var(--kb-inset, 0px));
 }
 body.kb-open #screen-cartilla .form-actions.proy-actions {
   opacity: 0;
   pointer-events: none;
   transform: translateY(110%);
-  transition: transform 0.18s var(--ease), opacity 0.18s var(--ease);
+  transition: transform 0.16s var(--ease), opacity 0.16s var(--ease);
 }
 #screen-cartilla .form-actions.proy-actions {
-  transition: transform 0.18s var(--ease), opacity 0.18s var(--ease);
+  transition: transform 0.16s var(--ease), opacity 0.16s var(--ease);
 }
 .cartilla-row {
   position: relative;

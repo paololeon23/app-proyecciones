@@ -601,27 +601,60 @@ QB.App = (() => {
     let kb = 0;
     if (vv) {
       kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    } else if (window.innerHeight) {
+      // fallback aproximado
+      kb = 0;
     }
     document.documentElement.style.setProperty("--kb-inset", `${kb}px`);
-    document.body.classList.toggle("kb-open", kb > 80);
+    document.body.classList.toggle("kb-open", kb > 60);
     return kb;
   }
 
   function keepInputVisible_(el) {
     if (!el) return;
     const run = () => {
-      updateKeyboardInset_();
-      try {
-        el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-      } catch (_) {
-        try {
-          el.scrollIntoView(true);
-        } catch (__) {}
+      const kb = updateKeyboardInset_();
+      const scroller =
+        el.closest(".cartilla-body, .panel-scroll") || document.getElementById("cartilla-fields");
+      const wrap = el.closest(".cartilla-obs, .cartilla-row") || el;
+
+      // Solo mientras el teclado está abierto: espacio temporal para poder scrollear
+      if (scroller) {
+        if (kb > 60) {
+          const extra = kb + (el.tagName === "TEXTAREA" ? 72 : 40);
+          scroller.style.paddingBottom = `${extra}px`;
+        } else {
+          scroller.style.paddingBottom = "";
+        }
       }
+
+      if (!scroller) {
+        try {
+          wrap.scrollIntoView({ block: "center", inline: "nearest" });
+        } catch (_) {}
+        return;
+      }
+
+      if (kb <= 60) return;
+
+      const sRect = scroller.getBoundingClientRect();
+      const tRect = wrap.getBoundingClientRect();
+      const vv = window.visualViewport;
+      const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      const safeBottom = visibleBottom - (el.tagName === "TEXTAREA" ? 24 : 16);
+      const safeTop = sRect.top + 10;
+
+      let delta = 0;
+      if (tRect.bottom > safeBottom) delta = tRect.bottom - safeBottom + 12;
+      else if (tRect.top < safeTop) delta = tRect.top - safeTop;
+      if (delta) scroller.scrollTop += delta;
     };
+
     run();
-    setTimeout(run, 80);
-    setTimeout(run, 280);
+    requestAnimationFrame(run);
+    setTimeout(run, 120);
+    setTimeout(run, 320);
+    setTimeout(run, 520);
   }
 
   function setupKeyboardAwareScroll_() {
@@ -644,16 +677,19 @@ QB.App = (() => {
           if (!a || !a.matches || !a.matches("input, textarea")) {
             document.documentElement.style.setProperty("--kb-inset", "0px");
             document.body.classList.remove("kb-open");
+            document.querySelectorAll(".cartilla-body, #cartilla-fields").forEach((el) => {
+              el.style.paddingBottom = "";
+            });
           }
-        }, 80);
+        }, 120);
       },
       true
     );
     if (window.visualViewport) {
       const onVv = () => {
-        updateKeyboardInset_();
         const a = document.activeElement;
         if (a && a.matches && a.matches("input, textarea")) keepInputVisible_(a);
+        else updateKeyboardInset_();
       };
       window.visualViewport.addEventListener("resize", onVv);
       window.visualViewport.addEventListener("scroll", onVv);
