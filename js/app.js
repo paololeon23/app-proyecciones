@@ -584,7 +584,6 @@ QB.App = (() => {
         state.cartilla.samples[state.muestraIndex][id] = inp.value;
         saveDraft_();
       });
-      inp.addEventListener("focus", () => keepInputVisible_(inp));
     });
     const obs = $("#cartilla-obs");
     if (obs) {
@@ -592,38 +591,33 @@ QB.App = (() => {
         state.cartilla.observacion = obs.value;
         saveDraft_();
       });
-      obs.addEventListener("focus", () => keepInputVisible_(obs));
     }
   }
 
-  /** Como Calidad: viewport resizes-content + scroll del campo activo arriba del teclado */
+  /** Scroll suave solo si el campo queda tapado (sin redibujar ni saltar) */
+  let kbScrollTimer_ = 0;
   function keepInputVisible_(el) {
     if (!el) return;
     const wrap = el.closest(".cartilla-obs, .cartilla-row") || el;
     const scroller =
       el.closest(".cartilla-body, .panel-scroll") || document.getElementById("cartilla-fields");
+    if (!scroller) return;
 
-    const run = () => {
-      try {
-        wrap.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
-      } catch (_) {
-        try {
-          wrap.scrollIntoView(true);
-        } catch (__) {}
-      }
-      if (!scroller) return;
+    const nudge = () => {
+      if (document.activeElement !== el) return;
       const tRect = wrap.getBoundingClientRect();
       const sRect = scroller.getBoundingClientRect();
-      const safeBottom = sRect.bottom - 12;
-      const safeTop = sRect.top + 8;
-      if (tRect.bottom > safeBottom) scroller.scrollTop += tRect.bottom - safeBottom + 8;
-      else if (tRect.top < safeTop) scroller.scrollTop += tRect.top - safeTop;
+      const pad = 10;
+      let delta = 0;
+      if (tRect.bottom > sRect.bottom - pad) delta = tRect.bottom - (sRect.bottom - pad);
+      else if (tRect.top < sRect.top + pad) delta = tRect.top - (sRect.top + pad);
+      if (Math.abs(delta) > 2) scroller.scrollTop += delta;
     };
 
-    run();
-    requestAnimationFrame(run);
-    setTimeout(run, 120);
-    setTimeout(run, 300);
+    // Una sola pasada inmediata + otra cuando el teclado ya redimensionó
+    nudge();
+    clearTimeout(kbScrollTimer_);
+    kbScrollTimer_ = setTimeout(nudge, 280);
   }
 
   function setupKeyboardAwareScroll_() {
@@ -635,29 +629,19 @@ QB.App = (() => {
       (e) => {
         const t = e.target;
         if (!t || !t.matches) return;
-        if (!t.matches("input, textarea, [contenteditable='true']")) return;
-        document.body.classList.add("kb-open");
+        if (!t.matches("input, textarea")) return;
+        // Solo dentro de cartilla / paneles scrolleables
+        if (!t.closest(".cartilla-body, #cartilla-fields, .panel-scroll")) return;
         keepInputVisible_(t);
-      },
-      true
-    );
-
-    document.addEventListener(
-      "focusout",
-      () => {
-        setTimeout(() => {
-          const a = document.activeElement;
-          if (!a || !a.matches || !a.matches("input, textarea")) {
-            document.body.classList.remove("kb-open");
-          }
-        }, 80);
       },
       true
     );
 
     window.addEventListener("resize", () => {
       const a = document.activeElement;
-      if (a && a.matches && a.matches("input, textarea")) keepInputVisible_(a);
+      if (!a || !a.matches || !a.matches("input, textarea")) return;
+      if (!a.closest(".cartilla-body, #cartilla-fields, .panel-scroll")) return;
+      keepInputVisible_(a);
     });
   }
 

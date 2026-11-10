@@ -2081,12 +2081,6 @@ body[data-qb-screen="resumen"] > .form-actions.dual { display: grid; }
   transition: none;
   animation: none;
 }
-body.kb-open .app {
-  overflow: hidden;
-}
-body.kb-open .field textarea:focus {
-  max-height: 72px;
-}
 
 .btn {
   display: inline-flex;
@@ -3999,11 +3993,7 @@ body[data-qb-screen="cartilla"] > .form-actions {
   padding: 12px 0 16px;
   scroll-padding-bottom: 24px;
 }
-/* Con interactive-widget=resizes-content el layout baja con el teclado (como Calidad).
-   Solo centramos el campo activo; sin huecos inventados. */
-body.kb-open #screen-cartilla .form-actions.proy-actions {
-  flex-shrink: 0;
-}
+/* Teclado: interactive-widget=resizes-content (meta viewport). Sin clases que redibujen. */
 .cartilla-row {
   position: relative;
   display: grid;
