@@ -4,18 +4,31 @@ window.QB = window.QB || {};
 QB.CONFIG = {
   /** Endpoint codificado (uso interno). Pegar URL /exec de Apps Script aquí o en _ep base64. */
   _ep: "",
-  API_URL: "",
+  API_URL: "https://script.google.com/macros/s/AKfycbxxLAKdchGStfg2IIkaeJKgDdsRgTf9-s-jg3cYz6k2dgZcaJj-54CFLgwPled2fr24/exec",
   APP_NAME: "Q Berries · Proyecciones",
-  VERSION: "1.2.8",
+  VERSION: "1.5.9",
   PUBLIC_URL: "https://app-proyecciones.netlify.app",
   /** Muestras iniciales al crear cartilla (se pueden agregar más en campo) */
   SAMPLE_START: 1,
   SAMPLE_MAX: 40,
+  /** Campaña activa por defecto en el modal CREAR */
+  CAMPANA_DEFAULT: "2026 - II",
+  /** Historial / proyección: peso baya (g) y densidad plantas/ha */
+  PESO_BAYA_G: 2.6,
+  DENSIDAD_PLANTAS_HA: 6500,
 };
+
+/** Campañas disponibles (selector arriba a la derecha del modal) */
+QB.CAMPANAS = [
+  { id: "2026 - II", label: "2026 - II" },
+  { id: "2026 - I", label: "2026 - I" },
+  { id: "2025 - II", label: "2025 - II" },
+];
 
 /** Cartillas disponibles en el modal CREAR */
 QB.CARTILLAS = [
   { id: "proyecciones", label: "Proyecciones", meta: "Cartilla de campo" },
+  { id: "biometria", label: "Biometría", meta: "Próximamente · bloqueada", disabled: true },
 ];
 
 /** Campos numéricos por muestra (orden de la cartilla) */
@@ -38,7 +51,8 @@ QB.SAMPLE_FIELDS = [
 QB.SHEET_HEADERS = [
   "Lote",
   "Fecha",
-  "Evaluador",
+  "DNI",
+  "Nombre",
   "N° Muestra",
   "N° Ramas",
   "Yema Productiva",
@@ -62,4 +76,5 @@ QB.SHEET_HEADERS = [
   "Etapa",
   "Variedad",
   "Area",
+  "Campaña",
 ];

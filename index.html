@@ -34,10 +34,21 @@
       if (!allowMobileOrTablet()) {
         document.documentElement.classList.add("is-desktop");
       }
+      /* Sesión antes de pintar: sin login no se ve la app (evita flash al refresh). */
+      var authed = false;
+      try {
+        var s = JSON.parse(localStorage.getItem("qb_proy_session") || "null");
+        var dni = String(s && s.dni || "").replace(/\D/g, "");
+        authed = /^\d{8}$/.test(dni);
+      } catch (e) {
+        authed = false;
+      }
+      document.documentElement.classList.toggle("qb-authed", authed);
+      document.documentElement.classList.toggle("qb-locked", !authed);
     })();
   </script>
 </head>
-<body>
+<body class="qb-boot">
   <div class="desktop-gate" id="desktop-gate" aria-live="polite">
     <div class="desktop-gate-bg" aria-hidden="true">
       <span class="orb orb-a"></span>
@@ -128,11 +139,6 @@
             <strong>Una cartilla a la vez</strong>
             <p>Completa, guarda y continúa con el siguiente lote.</p>
           </li>
-          <li class="qb-sync-tip">
-            <span class="qb-sync-tip-kicker">Soporte</span>
-            <strong>¿Necesitas ayuda?</strong>
-            <p>Contacta a Support — Paolo León.</p>
-          </li>
         </ul>
       </div>
       <button type="button" class="qb-sync-done" id="qb-sync-done">Cerrar</button>
@@ -161,17 +167,17 @@
     <div class="create-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
       <div class="create-modal-brand">
         <img src="assets/logo-qberries.png" alt="" width="36" height="36" />
-        <div>
+        <div class="create-modal-brand-text">
           <p class="create-kicker">Q BERRIES</p>
           <h2 id="create-modal-title">Nueva cartilla</h2>
         </div>
+        <button type="button" class="create-campana" id="sel-campana" aria-label="Campaña">
+          <span class="create-campana-kicker">Campaña</span>
+          <strong id="sel-campana-label">2026 - II</strong>
+        </button>
       </div>
       <p class="create-lead">Completa los datos para abrir la cartilla</p>
       <div class="create-fields">
-        <label class="create-field">
-          <span>Evaluador</span>
-          <button type="button" class="create-select" id="sel-evaluador" data-placeholder="Seleccionar">Seleccionar</button>
-        </label>
         <label class="create-field">
           <span>Cartilla</span>
           <button type="button" class="create-select" id="sel-cartilla" data-placeholder="Seleccionar">Seleccionar</button>
@@ -196,6 +202,36 @@
     </div>
   </div>
 
+  <div class="qb-login" id="qb-login" role="dialog" aria-modal="true" aria-labelledby="login-title">
+    <form class="qb-login-card" id="qb-login-form" autocomplete="off">
+      <img class="qb-login-logo" src="assets/logo-qberries.png" alt="Q Berries" width="84" height="84" />
+      <p class="qb-login-brand">Q BERRIES · PROYECCIONES</p>
+      <h1 id="login-title">Iniciar sesión</h1>
+      <p class="qb-login-lead">Ingrese su documento. La contraseña es el mismo número de DNI.</p>
+      <label class="qb-login-field">
+        <span>Documento de identidad</span>
+        <input id="login-dni" inputmode="numeric" maxlength="8" autocomplete="username" placeholder="Ingrese su DNI" />
+      </label>
+      <label class="qb-login-field is-clave">
+        <span>Contraseña</span>
+        <input id="login-pass" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" placeholder="Ingrese su DNI" />
+      </label>
+      <p class="qb-login-error" id="login-error" hidden></p>
+      <button type="submit" class="qb-login-btn" id="btn-login">Iniciar sesión</button>
+    </form>
+  </div>
+
+  <div class="fab-wrap" id="fab-wrap">
+    <div class="fab-menu" id="fab-menu" hidden>
+      <button type="button" class="fab-item" id="fab-logout">Cerrar sesión</button>
+      <button type="button" class="fab-item" id="fab-update">Actualizar app</button>
+      <button type="button" class="fab-item" id="fab-cache">Borrar caché</button>
+    </div>
+    <button class="fab-options" id="fab-options-btn" type="button" data-act="toggle-fab" aria-label="Opciones rápidas" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>
+    </button>
+  </div>
+
   <div class="app">
     <!-- HOME -->
     <section class="screen active" id="screen-home">
@@ -207,11 +243,11 @@
 
       <header class="corp-header glass">
         <div class="corp-left">
-          <img class="corp-logo" src="assets/logo-qberries.png" alt="Q Berries" width="56" height="56" draggable="false" />
+          <img class="corp-logo" src="assets/logo-qberries.png" alt="Q Berries" width="40" height="40" draggable="false" />
           <div class="corp-titles">
             <div class="corp-brand">Q BERRIES</div>
             <h1 class="corp-title">Proyecciones</h1>
-            <p class="corp-sub">Cartilla de campo</p>
+            <p class="corp-sub" id="home-session">Cartilla de campo</p>
           </div>
         </div>
         <div class="status-stack" data-status-bar>
@@ -269,7 +305,7 @@
               <span class="proy-step-num" aria-hidden="true">1</span>
               <div class="proy-step-copy">
                 <strong>Crear cartilla</strong>
-                <p>Elige evaluador, módulo, turno y lote. En segundos estás listo para capturar.</p>
+                <p>Elige módulo, turno y lote. En segundos estás listo para capturar.</p>
               </div>
             </li>
             <li class="proy-step">
@@ -377,11 +413,15 @@
           <p class="corp-sub">Envíos y pendientes</p>
         </div>
         <div class="status-stack" data-status-bar>
-          <div class="status-chip online" data-chip-online>
+          <div class="status-chip online" data-chip-online title="Estado de conexión">
             <span class="dot"></span>
             <span class="chip-text">En línea</span>
           </div>
-          <button type="button" class="status-chip pending" data-chip-pending>
+          <button type="button" class="status-chip pending" data-chip-pending title="Sincronizar pendientes" data-fast-tap="1">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <path d="M12 16V8M8 11l4-4 4 4"/>
+              <path d="M5 18h14a2 2 0 0 0 2-2v-1a4 4 0 0 0-3.2-3.9A6 6 0 0 0 6.1 9.2 4 4 0 0 0 5 13v3a2 2 0 0 0 2 2z" opacity=".35"/>
+            </svg>
             <span class="chip-text" data-pending-text>0 pend.</span>
           </button>
         </div>
@@ -405,7 +445,15 @@
           <p class="corp-sub" id="cartilla-code-sub">—</p>
         </div>
         <div class="status-stack" data-status-bar>
-          <button type="button" class="status-chip pending" data-chip-pending id="btn-cartilla-menu" title="Sync">
+          <div class="status-chip online" data-chip-online title="Estado de conexión">
+            <span class="dot"></span>
+            <span class="chip-text">En línea</span>
+          </div>
+          <button type="button" class="status-chip pending" data-chip-pending title="Sincronizar pendientes" data-fast-tap="1">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <path d="M12 16V8M8 11l4-4 4 4"/>
+              <path d="M5 18h14a2 2 0 0 0 2-2v-1a4 4 0 0 0-3.2-3.9A6 6 0 0 0 6.1 9.2 4 4 0 0 0 5 13v3a2 2 0 0 0 2 2z" opacity=".35"/>
+            </svg>
             <span class="chip-text" data-pending-text>0 pend.</span>
           </button>
         </div>
@@ -425,6 +473,43 @@
       </div>
       <div class="panel-scroll cartilla-body" id="cartilla-fields"></div>
       <div class="form-actions proy-actions proy-cartilla">
+        <button type="button" class="btn btn-dark" id="btn-ir-resumen">RESUMEN</button>
+      </div>
+    </section>
+
+    <!-- RESUMEN -->
+    <section class="screen" id="screen-resumen">
+      <header class="corp-header compact">
+        <button type="button" class="icon-btn" id="btn-back-resumen" aria-label="Volver a editar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <div class="corp-titles grow">
+          <div class="corp-brand">Q BERRIES</div>
+          <h1 class="corp-title">Resumen</h1>
+          <p class="corp-sub" id="resumen-code-sub">—</p>
+        </div>
+        <div class="status-stack" data-status-bar>
+          <div class="status-chip online" data-chip-online title="Estado de conexión">
+            <span class="dot"></span>
+            <span class="chip-text">En línea</span>
+          </div>
+          <button type="button" class="status-chip pending" data-chip-pending title="Sincronizar pendientes" data-fast-tap="1">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <path d="M12 16V8M8 11l4-4 4 4"/>
+              <path d="M5 18h14a2 2 0 0 0 2-2v-1a4 4 0 0 0-3.2-3.9A6 6 0 0 0 6.1 9.2 4 4 0 0 0 5 13v3a2 2 0 0 0 2 2z" opacity=".35"/>
+            </svg>
+            <span class="chip-text" data-pending-text>0 pend.</span>
+          </button>
+        </div>
+      </header>
+      <div class="panel-scroll resumen-body">
+        <div class="resumen-meta" id="resumen-meta"></div>
+        <p class="resumen-section-label">Muestras</p>
+        <div class="resumen-samples" id="resumen-samples"></div>
+        <p class="resumen-obs" id="resumen-obs" hidden></p>
+      </div>
+      <div class="form-actions proy-actions proy-resumen dual">
+        <button type="button" class="btn btn-ghost" id="btn-editar-resumen">EDITAR</button>
         <button type="button" class="btn btn-dark" id="btn-guardar">GUARDAR</button>
       </div>
     </section>

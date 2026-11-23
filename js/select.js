@@ -2,7 +2,7 @@
 window.QB = window.QB || {};
 
 QB.PreciseSelect = (() => {
-  let overlay, modal, titleEl, searchEl, listEl, addBtn, addPanel, addDniEl, addNameEl, addSaveBtn, addErrEl;
+  let overlay, modal, titleEl, searchWrap, searchEl, listEl, addBtn, addPanel, addDniEl, addNameEl, addSaveBtn, addErrEl;
   let state = {
     open: false,
     options: [],
@@ -20,7 +20,9 @@ QB.PreciseSelect = (() => {
     placeholder: "Buscar...",
     inputmode: "",
     listColumns: false,
+    hideSearch: false,
   };
+  let openedAt_ = 0;
 
   function ensureDom() {
     if (overlay) return;
@@ -35,7 +37,7 @@ QB.PreciseSelect = (() => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div class="precise-search">
+        <div class="precise-search" id="precise-search-wrap">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
           <input type="search" id="precise-search" placeholder="Buscar..." autocomplete="off" enterkeyhint="search" />
         </div>
@@ -60,6 +62,7 @@ QB.PreciseSelect = (() => {
 
     modal = overlay.querySelector(".precise-modal");
     titleEl = overlay.querySelector("#precise-title");
+    searchWrap = overlay.querySelector("#precise-search-wrap");
     searchEl = overlay.querySelector("#precise-search");
     listEl = overlay.querySelector("#precise-list");
     addBtn = overlay.querySelector("#precise-add");
@@ -71,7 +74,10 @@ QB.PreciseSelect = (() => {
 
     overlay.querySelector("#precise-close").addEventListener("click", close);
     overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) close();
+      if (e.target !== overlay) return;
+      // Evita que el mismo toque que abrió el select lo cierre al instante
+      if (Date.now() - openedAt_ < 450) return;
+      close();
     });
     let filterTimer = null;
     searchEl.addEventListener("input", () => {
@@ -272,9 +278,18 @@ QB.PreciseSelect = (() => {
       state.filtered
         .map((o) => {
           const sel = state.selected && String(state.selected) === String(o.id);
+          const locked = !!o.disabled;
+          const cls = [
+            "precise-option",
+            state.listColumns ? "precise-row" : "",
+            sel ? "selected" : "",
+            locked ? "is-disabled" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
           if (state.listColumns) {
             const dni = o.dni || String(o.id).replace(/\D.*/, "") || o.id;
-            return `<button type="button" class="precise-option precise-row${sel ? " selected" : ""}" data-id="${escapeAttr(o.id)}">
+            return `<button type="button" class="${cls}" data-id="${escapeAttr(o.id)}"${locked ? ' aria-disabled="true"' : ""}>
           <span class="opt-title col-name">${escapeHtml(o.label)}</span>
           <span class="opt-dni col-dni">${escapeHtml(String(dni))}</span>
         </button>`;
@@ -282,25 +297,30 @@ QB.PreciseSelect = (() => {
           const meta = o.meta
             ? `<span class="opt-meta">${escapeHtml(o.meta)}</span>`
             : "";
-          return `<button type="button" class="precise-option${sel ? " selected" : ""}" data-id="${escapeAttr(o.id)}">
+          return `<button type="button" class="${cls}" data-id="${escapeAttr(o.id)}"${locked ? ' aria-disabled="true"' : ""}>
           <span class="opt-title">${escapeHtml(o.label)}</span>${meta}
         </button>`;
         })
         .join("");
 
     listEl.querySelectorAll(".precise-option").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Ignora el click fantasma del toque que abrió el modal
+        if (Date.now() - openedAt_ < 350) return;
         const opt =
           state.options.find((o) => String(o.id) === btn.dataset.id) ||
           state.filtered.find((o) => String(o.id) === btn.dataset.id);
-        if (opt) pick(opt);
+        if (!opt || opt.disabled) return;
+        pick(opt);
       });
     });
     updateAddUi();
   }
 
   function pick(opt) {
-    if (!state.open) return;
+    if (!state.open || !opt || opt.disabled) return;
     state.selected = opt.id;
     const cb = state.onSelect;
     close();
@@ -332,9 +352,12 @@ QB.PreciseSelect = (() => {
     state.emptyHint = opts.emptyHint || "Sin resultados";
     state.inputmode = opts.inputmode || "";
     state.listColumns = !!opts.listColumns;
+    state.hideSearch = opts.hideSearch === true || opts.searchable === false;
 
     titleEl.textContent = state.title;
     if (modal) modal.classList.toggle("has-columns", state.listColumns);
+    if (searchWrap) searchWrap.hidden = !!state.hideSearch;
+    if (modal) modal.classList.toggle("no-search", !!state.hideSearch);
     searchEl.placeholder = state.placeholder;
     searchEl.value = "";
     if (state.inputmode) searchEl.setAttribute("inputmode", state.inputmode);
@@ -344,10 +367,12 @@ QB.PreciseSelect = (() => {
       state.options = opts.options || [];
     }
     filter("");
+    openedAt_ = Date.now();
     overlay.classList.add("open");
     document.documentElement.classList.add("precise-open");
 
     requestAnimationFrame(() => {
+      if (state.hideSearch) return;
       try {
         searchEl.focus({ preventScroll: true });
       } catch (_) {
@@ -376,7 +401,11 @@ QB.PreciseSelect = (() => {
     resetAddForm();
     if (overlay) overlay.classList.remove("open");
     document.documentElement.classList.remove("precise-open");
-    if (modal) modal.classList.remove("has-columns");
+    if (modal) {
+      modal.classList.remove("has-columns");
+      modal.classList.remove("no-search");
+    }
+    if (searchWrap) searchWrap.hidden = false;
     if (listEl) listEl.classList.remove("has-columns");
     if (activeTrigger) {
       activeTrigger.classList.remove("open");

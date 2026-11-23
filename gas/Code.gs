@@ -5,6 +5,8 @@
  * - CacheService + Client ID: anti-duplicado en reintento de red
  * - Marca caché SOLO después de escribir en Sheet
  * - Cada cartilla = N filas (una por muestra), nunca pisa
+ * - Hoja 1 Evaluadores: acceso (DNI + Activo). Sin DNI se simula uno.
+ * - Hoja 2 Proyecciones: registros. N° Muestra = 1..N automático por cartilla.
  *
  * SETUP:
  * 1) Sheet destino → Extensiones → Apps Script → pega este archivo
@@ -13,12 +15,17 @@
  * 4) URL …/exec → js/config.js → API_URL o _ep (base64)
  */
 
+var SHEET_EVAL = 'Evaluadores';
 var SHEET_NAME = 'Proyecciones';
+
+/** DNI, Nombre, Rol, Modulo, Activo (checkbox) */
+var EVAL_HEADERS = ['DNI', 'Nombre', 'Rol', 'Modulo', 'Activo'];
 
 var HEADERS = [
   'Lote',
   'Fecha',
-  'Evaluador',
+  'DNI',
+  'Nombre',
   'N° Muestra',
   'N° Ramas',
   'Yema Productiva',
@@ -41,10 +48,18 @@ var HEADERS = [
   'Semana',
   'Etapa',
   'Variedad',
-  'Area'
+  'Area',
+  'Campaña'
 ];
 
-var CACHE_TTL_SEC = 21600; // 6 h
+var CACHE_TTL_SEC = 86400; // 24 h anti-duplicado en reintentos 3G/H+
+
+/** Columnas que cuentan como “muestra con datos” */
+var SAMPLE_DATA_HEADERS = [
+  'N° Ramas', 'Yema Productiva', 'Yema Abierta', 'Yemas Cerradas', 'Yemas Muertas',
+  'Botón Floral', 'Flor', 'Cuaja', 'E1 (Verde)', 'E2 (Rosado)', 'E3 (Guinda)',
+  'E4 (50%-70%)', 'E5 (Maduro)'
+];
 
 /** Columnas numéricas del Excel "Dta proyecciones" */
 var NUMERIC_HEADERS = {
@@ -70,49 +85,104 @@ var NUMERIC_HEADERS = {
 
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var evalSheet = ensureEvalSheet_(ss);
   var sheet = ss.getSheetByName(SHEET_NAME);
           if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
     sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
     styleHeader_(sheet, HEADERS.length);
           } else {
+    splitEvaluadorColumn_(sheet);
     ensureHeaders_(sheet, HEADERS);
   }
+  // Evaluadores queda como primera hoja (accesos)
+  try {
+    ss.setActiveSheet(evalSheet);
+    ss.moveActiveSheet(1);
+  } catch (_) {}
 }
 
 function doGet(e) {
   e = e || { parameter: {} };
-  var action = String((e.parameter && e.parameter.action) || 'ping').trim();
+  var p = e.parameter || {};
+  var action = String(p.action || 'ping').trim().toLowerCase();
   try {
     if (action === 'ping' || action === 'help') {
       return json_({
         ok: true,
         api: 'proyecciones',
-        version: '1.0.0',
-        sheet: SHEET_NAME,
+        version: '1.2.0',
+        sheets: [SHEET_EVAL, SHEET_NAME],
         headers: HEADERS,
+        evalHeaders: EVAL_HEADERS,
+        acciones: ['proyecciones', 'evaluadores', 'hojas', 'acceso'],
         ts: nowIso_()
       });
     }
-    return json_({ ok: true, api: 'proyecciones', version: '1.0.0' });
+    if (action === 'evaluadores' || action === 'usuarios') {
+      return json_(listEvaluadores_(String(p.soloActivos || '') === '1'));
+    }
+    if (action === 'acceso' || action === 'check') {
+      return json_(checkAcceso_(p.dni || p.DNI || ''));
+    }
+    if (action === 'proyecciones' || action === 'registros' || action === 'list' || action === 'export') {
+      return json_(listProyecciones_(p));
+    }
+    if (action === 'hojas' || action === 'all') {
+      return json_({
+        ok: true,
+        api: 'proyecciones',
+        version: '1.2.0',
+        evaluadores: listEvaluadores_(String(p.soloActivos || '') === '1'),
+        proyecciones: listProyecciones_(p)
+      });
+    }
+    return json_({ ok: false, error: 'Acción GET desconocida: ' + action });
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message ? err.message : err) });
   }
 }
 
+/**
+ * El POST de la app llega AQUÍ. Si trae filas, se agregan en la hoja Proyecciones.
+ * No hay función aparte: doPost es el que escribe.
+ */
 function doPost(e) {
   try {
     var body = parseBody_(e);
+    if (!body || body._empty) {
+      Logger.log('POST sin cuerpo');
+      return json_({ ok: false, error: 'POST vacío: no llegó el JSON' });
+    }
+    if (body._parseError) {
+      Logger.log('POST no es JSON: ' + body._raw);
+      return json_({ ok: false, error: 'POST no es JSON', raw: body._raw });
+    }
+
     var action = String(body.action || 'save').trim();
+    Logger.log('POST action=' + action + ' clientId=' + (body.clientId || '') + ' rows=' + (body.rows ? body.rows.length : 0));
+
     if (action === 'ping') {
       return json_({ ok: true, api: 'proyecciones', ts: nowIso_() });
     }
     if (action === 'batchSave' || action === 'batch') {
-      return json_(saveBatch_(body));
+      var batch = saveBatch_(body);
+      Logger.log('POST batch escrito ' + JSON.stringify(batch));
+      return json_(batch);
     }
-    return json_(saveCartilla_(body));
+    if (action === 'setAcceso' || action === 'setActivo') {
+      return json_(setAcceso_(body));
+    }
+
+    if (!String(body.clientId || '').trim()) {
+      return json_({ ok: false, error: 'Falta clientId: no se guarda nada' });
+    }
+    var saved = saveCartilla_(body);
+    Logger.log('POST escrito en ' + saved.sheet + ' fila ' + saved.row + ' n=' + saved.rowsWritten);
+    return json_(saved);
   } catch (err) {
     var msg = String(err && err.message ? err.message : err).replace(/^Error:\s*/i, '');
+    Logger.log('POST error: ' + msg);
     return json_({ ok: false, error: msg });
   }
 }
@@ -175,10 +245,9 @@ function appendCartilla_(ss, body) {
   if (!matrix.length) throw new Error('Sin filas de muestras');
 
   var startRow = Math.max(sheet.getLastRow() + 1, 2);
-  var endRow = startRow + matrix.length - 1;
-  // Fecha como texto (columna 2)
-  sheet.getRange(startRow, 2, endRow, 2).setNumberFormat('@');
-  sheet.getRange(startRow, 1, endRow, HEADERS.length).setValues(matrix);
+  // getRange(fila, col, CANTIDAD de filas, CANTIDAD de columnas)
+  sheet.getRange(startRow, 2, matrix.length, 1).setNumberFormat('@');
+  sheet.getRange(startRow, 1, matrix.length, HEADERS.length).setValues(matrix);
   markClientIdDone_(clientId);
 
   return {
@@ -213,9 +282,13 @@ function buildMatrix_(body) {
       return Object.assign({}, s, { 'N° Muestra': i + 1 });
     });
   }
-  if (!rowsIn.length) {
-    rowsIn = [{ 'N° Muestra': 1 }];
-  }
+  // Solo muestras con al menos un dato. Nunca escribir filas vacías.
+  rowsIn = rowsIn.filter(function (r) {
+    return r && SAMPLE_DATA_HEADERS.some(function (h) {
+      return r[h] !== '' && r[h] != null;
+    });
+  });
+  if (!rowsIn.length) throw new Error('Sin muestras con datos: no se guardó nada');
 
   var matrix = [];
   for (var i = 0; i < rowsIn.length; i++) {
@@ -228,8 +301,9 @@ function buildMatrix_(body) {
     if (!map.Lote) map.Lote = data.lote || data.loteCode || '';
     if (!map.Fecha) map.Fecha = fechaISO;
     else map.Fecha = canonFechaSave_(map.Fecha, body.submittedAt || stamp);
-    if (!map.Evaluador) map.Evaluador = data.evaluador || '';
-    if (map['N° Muestra'] == null || map['N° Muestra'] === '') map['N° Muestra'] = i + 1;
+    splitPersona_(data, map);
+    // N° Muestra siempre automático: 1, 2, 3… según las evaluaciones de esta cartilla
+    map['N° Muestra'] = i + 1;
     if (!map.Observación && data.observacion) map.Observación = data.observacion;
     if (map['Foto cabecera'] == null) map['Foto cabecera'] = '';
     if (!map.Modulo) map.Modulo = data.modulo || '';
@@ -239,6 +313,7 @@ function buildMatrix_(body) {
     if (!map.Etapa) map.Etapa = data.etapa || '';
     if (!map.Variedad) map.Variedad = data.variedad || '';
     if (map.Area == null || map.Area === '') map.Area = data.area != null ? data.area : '';
+    if (!map['Campaña']) map['Campaña'] = data.campana || data.campaña || '';
 
     var row = [];
     for (var c = 0; c < HEADERS.length; c++) {
@@ -291,15 +366,286 @@ function saveBatch_(body) {
   }
 }
 
+/* ——— Evaluadores (acceso) ——— */
+
+function ensureEvalSheet_(ss) {
+  var sheet = ss.getSheetByName(SHEET_EVAL);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_EVAL, 0);
+    sheet.getRange(1, 1, 1, EVAL_HEADERS.length).setValues([EVAL_HEADERS]);
+    styleHeader_(sheet, EVAL_HEADERS.length);
+  } else {
+    var current = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), EVAL_HEADERS.length)).getValues()[0];
+    var need = false;
+    for (var i = 0; i < EVAL_HEADERS.length; i++) {
+      if (String(current[i] || '').trim() !== EVAL_HEADERS[i]) { need = true; break; }
+    }
+    if (need) {
+      sheet.getRange(1, 1, 1, EVAL_HEADERS.length).setValues([EVAL_HEADERS]);
+      styleHeader_(sheet, EVAL_HEADERS.length);
+    }
+  }
+  return sheet;
+}
+
+/** Si no hay DNI de 8 dígitos, arma uno estable que empieza en 9. */
+function simularDni_(nombre, usados) {
+  var s = String(nombre || 'EVAL');
+  var h = 0;
+  for (var i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
+  var n = 0;
+  var dni = '';
+  do {
+    dni = '9' + ('0000000' + String((h + n) % 10000000)).slice(-7);
+    n++;
+  } while (usados[dni] && n < 50);
+  usados[dni] = true;
+  return dni;
+}
+
+function dniOk_(v) {
+  return /^\d{8}$/.test(String(v || '').trim());
+}
+
+function activoDe_(v) {
+  if (v === true || v === 1) return true;
+  var s = String(v == null ? '' : v).trim().toLowerCase();
+  return s === 'true' || s === 'si' || s === 'sí' || s === '1' || s === 'activo' || s === 'x';
+}
+
+/** Separa "70667311 — NOMBRE" en columnas DNI y Nombre. */
+function splitPersona_(data, map) {
+  data = data || {};
+  var dni = String(data.evaluadorId || data.dni || map.DNI || '').replace(/\D/g, '');
+  var nombre = String(data.nombre || data.evaluadorNombre || map.Nombre || '').trim();
+  var combo = String(data.evaluador || map.Evaluador || '').trim();
+  var m = combo.match(/^(\d{8})\s*[—–\-]\s*(.+)$/);
+  if (m) {
+    if (!dniOk_(dni)) dni = m[1];
+    if (!nombre) nombre = String(m[2] || '').trim();
+  } else if (!nombre && combo && !dniOk_(combo)) {
+    nombre = combo;
+  }
+  if (!dniOk_(dni)) dni = '';
+  map.DNI = dni;
+  map.Nombre = nombre;
+}
+
+/** Si la hoja aún tiene la columna Evaluador junta, la parte en DNI + Nombre. */
+function splitEvaluadorColumn_(sheet) {
+  var headers = getHeaders_(sheet);
+  if (String(headers[2] || '') !== 'Evaluador') return;
+  sheet.insertColumnAfter(3);
+  var last = sheet.getLastRow();
+  if (last >= 2) {
+    var n = last - 1;
+    var vals = sheet.getRange(2, 3, n, 1).getValues();
+    var dnis = [];
+    var noms = [];
+    for (var i = 0; i < vals.length; i++) {
+      var s = String(vals[i][0] || '').trim();
+      var m = s.match(/^(\d{8})\s*[—–\-]\s*(.+)$/);
+      if (m) {
+        dnis.push([m[1]]);
+        noms.push([String(m[2] || '').trim()]);
+      } else if (dniOk_(s)) {
+        dnis.push([s]);
+        noms.push(['']);
+      } else {
+        dnis.push(['']);
+        noms.push([s]);
+      }
+    }
+    sheet.getRange(2, 3, n, 1).setValues(dnis);
+    sheet.getRange(2, 4, n, 1).setValues(noms);
+  }
+}
+
+function paintChecks_(sheet) {
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  try {
+    sheet.getRange(2, 5, last - 1, 1).insertCheckboxes();
+  } catch (_) {}
+}
+
+function readEvaluadores_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ensureEvalSheet_(ss);
+  var last = sheet.getLastRow();
+  var out = [];
+  if (last < 2) return out;
+  var vals = sheet.getRange(2, 1, last - 1, EVAL_HEADERS.length).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    var dni = String(vals[i][0] || '').trim();
+    var nombre = String(vals[i][1] || '').trim();
+    if (!dni && !nombre) continue;
+    out.push({
+      dni: dni,
+      nombre: nombre,
+      rol: String(vals[i][2] || 'Evaluador'),
+      modulo: String(vals[i][3] || ''),
+      activo: activoDe_(vals[i][4]),
+      row: i + 2
+    });
+  }
+  return out;
+}
+
+function listEvaluadores_(soloActivos) {
+  var all = readEvaluadores_();
+  var list = soloActivos ? all.filter(function (x) { return x.activo; }) : all;
+  var activos = 0;
+  for (var i = 0; i < all.length; i++) if (all[i].activo) activos++;
+  return { ok: true, sheet: SHEET_EVAL, total: all.length, activos: activos, evaluadores: list };
+}
+
+/** Lee la hoja por sus encabezados reales (sirve con columna Evaluador vieja o DNI + Nombre). */
+function readSheetRows_(sheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return { headers: [], rows: [] };
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return { headers: [], rows: [] };
+  var values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers = [];
+  for (var c = 0; c < values[0].length; c++) {
+    var h = String(values[0][c] || '').trim();
+    if (h) headers.push(h);
+  }
+  var rows = [];
+  for (var r = 1; r < values.length; r++) {
+    var obj = {};
+    var any = false;
+    for (var i = 0; i < headers.length; i++) {
+      var cell = values[r][i];
+      if (Object.prototype.toString.call(cell) === '[object Date]' && !isNaN(cell.getTime())) {
+        cell = Utilities.formatDate(cell, 'America/Lima', 'yyyy-MM-dd');
+      }
+      if (cell !== '' && cell != null) any = true;
+      obj[headers[i]] = cell == null ? '' : cell;
+    }
+    if (!any) continue;
+    obj._row = r + 1;
+    rows.push(obj);
+  }
+  return { headers: headers, rows: rows };
+}
+
+function rowHasSample_(row) {
+  for (var i = 0; i < SAMPLE_DATA_HEADERS.length; i++) {
+    var v = row[SAMPLE_DATA_HEADERS[i]];
+    if (v !== '' && v != null) return true;
+        }
+        return false;
+      }
+
+function listProyecciones_(p) {
+  p = p || {};
+  var pack = readSheetRows_(SHEET_NAME);
+  var desde = fechaKey_(p.desde || p.from || '');
+  var hasta = fechaKey_(p.hasta || p.to || '');
+  var modulo = String(p.modulo || '').trim().toUpperCase();
+  var turno = String(p.turno || '').trim();
+  var lote = String(p.lote || '').trim().toUpperCase();
+  var dni = String(p.dni || '').replace(/\D/g, '');
+  var campana = String(p.campana || p.campaña || '').trim().toLowerCase();
+  var q = String(p.q || '').trim().toLowerCase();
+
+  var filtered = [];
+  for (var i = 0; i < pack.rows.length; i++) {
+    var row = pack.rows[i];
+    if (!row.Lote && !rowHasSample_(row)) continue;
+    var fecha = fechaKey_(row.Fecha);
+    if (desde && fecha && fecha < desde) continue;
+    if (hasta && fecha && fecha > hasta) continue;
+    if (modulo && String(row.Modulo || '').toUpperCase().indexOf(modulo) === -1) continue;
+    if (turno && String(row.Turno || '') !== turno) continue;
+    if (lote && String(row.Lote || '').toUpperCase().indexOf(lote) === -1) continue;
+    var rowDni = String(row.DNI || '').replace(/\D/g, '');
+    if (!rowDni && row.Evaluador) {
+      var m = String(row.Evaluador).match(/^(\d{8})/);
+      if (m) rowDni = m[1];
+    }
+    if (dni && rowDni !== dni) continue;
+    if (campana && String(row['Campaña'] || '').toLowerCase().indexOf(campana) === -1) continue;
+    if (q) {
+      var blob = [row.Lote, row.Nombre, row.Evaluador, row.DNI, row.Modulo, row.Variedad].join(' ').toLowerCase();
+      if (blob.indexOf(q) === -1) continue;
+    }
+    filtered.push(row);
+  }
+
+  var total = filtered.length;
+  var limit = Math.min(2000, Math.max(1, Number(p.limit || p.limite || 500) || 500));
+  var offset = Math.max(0, Number(p.offset || 0) || 0);
+  var page = filtered.slice(offset, offset + limit);
+  return {
+    ok: true,
+    sheet: SHEET_NAME,
+    headers: pack.headers,
+    total: total,
+    offset: offset,
+    limit: limit,
+    registros: page
+  };
+}
+
+function checkAcceso_(dniRaw) {
+  var dni = String(dniRaw || '').replace(/\D/g, '');
+  if (!dniOk_(dni)) return { ok: false, error: 'DNI inválido', activo: false };
+  var all = readEvaluadores_();
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].dni === dni) {
+      return { ok: true, dni: dni, nombre: all[i].nombre, rol: all[i].rol, activo: all[i].activo };
+    }
+  }
+  return { ok: true, dni: dni, activo: false, error: 'Sin acceso' };
+}
+
+function setAcceso_(body) {
+  body = body || {};
+  var dni = String(body.dni || body.DNI || '').replace(/\D/g, '');
+  if (!dniOk_(dni)) throw new Error('DNI inválido');
+  var on = activoDe_(body.activo != null ? body.activo : body.activo === false ? false : true);
+  if (body.activo === false || body.activo === 0 || body.activo === '0' || body.activo === 'false') on = false;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ensureEvalSheet_(ss);
+  var all = readEvaluadores_();
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].dni === dni) {
+      sheet.getRange(all[i].row, 5).setValue(on);
+      try { sheet.getRange(all[i].row, 5).insertCheckboxes(); } catch (_) {}
+      return { ok: true, dni: dni, activo: on };
+    }
+  }
+  var nombre = String(body.nombre || '').trim() || ('EVAL ' + dni);
+  var row = Math.max(sheet.getLastRow() + 1, 2);
+  sheet.getRange(row, 1, 1, EVAL_HEADERS.length).setValues([[dni, nombre, body.rol || 'Evaluador', body.modulo || '', on]]);
+  try { sheet.getRange(row, 5).insertCheckboxes(); } catch (_) {}
+  return { ok: true, dni: dni, activo: on, created: true };
+}
+
 /* ——— helpers ——— */
 
 function parseBody_(e) {
-  if (!e || !e.postData || !e.postData.contents) return {};
+  var raw = '';
   try {
-    return JSON.parse(e.postData.contents);
-  } catch (_) {
-    return {};
+    if (e && e.postData && e.postData.contents) raw = String(e.postData.contents);
+  } catch (_) {}
+  if (!raw && e && e.parameter) {
+    raw = String(e.parameter.payload || e.parameter.body || e.parameter.data || '');
   }
+  raw = String(raw || '').replace(/^\uFEFF/, '').trim();
+  if (!raw) return { _empty: true };
+  try {
+    return JSON.parse(raw);
+  } catch (_) {}
+  try {
+    return JSON.parse(decodeURIComponent(raw.replace(/\+/g, ' ')));
+  } catch (_) {}
+  return { _parseError: true, _raw: raw.slice(0, 400) };
 }
 
 function json_(obj) {

@@ -1,0 +1,74 @@
+﻿[
+    {
+        "step":  "GET ping",
+        "ok":  true,
+        "ms":  2170,
+        "detail":  "api"
+    },
+    {
+        "step":  "GET acceso",
+        "ok":  true,
+        "ms":  2050,
+        "detail":  "ARANDA SOLIS VALERIA YAMILET"
+    },
+    {
+        "step":  "GET evaluadores",
+        "ok":  true,
+        "ms":  2208,
+        "detail":  "n=72"
+    },
+    {
+        "step":  "POST 4 muestras juntas",
+        "ok":  true,
+        "ms":  3768,
+        "detail":  "rows=4"
+    },
+    {
+        "step":  "POST anti-duplicado",
+        "ok":  true,
+        "ms":  1351,
+        "detail":  "dup=True"
+    },
+    {
+        "step":  "POST separada 1",
+        "ok":  true,
+        "ms":  2856,
+        "detail":  "cid=test-20261123110011-sep-1"
+    },
+    {
+        "step":  "POST separada 2",
+        "ok":  true,
+        "ms":  2174,
+        "detail":  "cid=test-20261123110011-sep-2"
+    },
+    {
+        "step":  "POST separada 3",
+        "ok":  true,
+        "ms":  2367,
+        "detail":  "cid=test-20261123110011-sep-3"
+    },
+    {
+        "step":  "POST separada 4",
+        "ok":  true,
+        "ms":  2970,
+        "detail":  "cid=test-20261123110011-sep-4"
+    },
+    {
+        "step":  "POST separada 5",
+        "ok":  true,
+        "ms":  1732,
+        "detail":  "cid=test-20261123110011-sep-5"
+    },
+    {
+        "step":  "POST separada 6",
+        "ok":  true,
+        "ms":  2165,
+        "detail":  "cid=test-20261123110011-sep-6"
+    },
+    {
+        "step":  "POST batchSave x3",
+        "ok":  true,
+        "ms":  2249,
+        "detail":  "confirmed=3"
+    }
+]

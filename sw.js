@@ -1,5 +1,5 @@
 /* Q Berries Proyecciones — Service Worker */
-const CACHE = "qb-proyecciones-v29";
+const CACHE = "qb-proyecciones-v60";
 const ASSETS = [
   "./",
   "./index.html",
@@ -53,7 +53,38 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+  const data = event.data || {};
+  if (data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+    return;
+  }
+  if (data.type === "NOTIFY" && data.title) {
+    event.waitUntil(
+      self.registration.showNotification(String(data.title), {
+        body: String(data.body || ""),
+        icon: "./assets/icon-192.png",
+        badge: "./assets/icon-192.png",
+        tag: String(data.tag || "qb-proy-sync"),
+        renotify: true,
+        vibrate: [90, 40, 90],
+        data: { url: "./index.html" },
+      })
+    );
+  }
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification && event.notification.data && event.notification.data.url) || "./index.html";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (let i = 0; i < clients.length; i++) {
+        const c = clients[i];
+        if (c.url && "focus" in c) return c.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
+  );
 });
 
 self.addEventListener("fetch", (event) => {

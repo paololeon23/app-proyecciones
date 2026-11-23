@@ -1,4 +1,4 @@
-/** Catálogos de campo: lotes, trabajadores (DNI), supervisores (DNI) */
+/** Catálogos de campo: lotes + evaluadores (DNI) */
 window.QB = window.QB || {};
 
 QB.Data = (() => {
@@ -6,8 +6,6 @@ QB.Data = (() => {
   let loading = null;
   let lotes = [];
   let lotesById = {};
-  let trabajadores = {};
-  let supervisores = {};
   /** Catálogo fijo embebido — siempre disponible (no depende de fetch) */
   let evaluadores = {
     "18078464": { nombre: "LOYOLA DOMINGUEZ OSWALDO ELMER" },
@@ -210,7 +208,6 @@ QB.Data = (() => {
         })
         .catch(() => fallback);
 
-    // Solo lotes + evaluadores (Proyecciones no usa cosechadores/supervisores)
     loading = Promise.all([
       fetchJson("./data/lotes-licapa.json", null),
       fetchJson("./data/evaluadores.json", null),
@@ -347,119 +344,17 @@ QB.Data = (() => {
   /** Módulo + turno (+ etapa) siempre desde catálogo de lotes */
   function loteMeta(loteId) {
     const L = findLote(loteId);
-    if (!L) return { modulo: "", turno: "", lote: String(loteId || ""), etapa: "" };
+    if (!L) return { modulo: "", turno: "", lote: String(loteId || ""), etapa: "", area: "" };
     return {
       lote: String(L.lote),
       modulo: L.modulo || "",
       turno: L.turno != null && L.turno !== "" ? String(L.turno) : "",
       etapa: L.etapa || "",
       variedad: L.variedad || "",
+      area: L.area != null && L.area !== "" ? Number(L.area) : "",
       codLote: L.codLote || "",
       raw: L,
     };
-  }
-
-  function searchDni(map, query, limit = 40) {
-    const digits = String(query || "").replace(/\D/g, "");
-    if (digits.length < 3) return [];
-    const out = [];
-    for (const dni of Object.keys(map)) {
-      if (!dni.includes(digits)) continue;
-      const p = map[dni];
-      const full = (p.nombre || "").trim();
-      out.push({
-        id: dni,
-        label: full || dni,
-        meta: `DNI ${dni}${p.cargo ? ` · ${p.cargo}` : ""}`,
-        nombre: full,
-        nombreCorto: shortName(full),
-        cargo: p.cargo || "",
-      });
-      if (out.length >= limit) break;
-    }
-    return out;
-  }
-
-  function personOptions(map, query, opts = {}) {
-    const metaLabel = opts.metaLabel || "";
-    const minList = opts.minList || 40;
-    const limit = opts.limit || 60;
-    const q = String(query || "").trim().toLowerCase();
-    const digits = String(query || "").replace(/\D/g, "");
-    const out = [];
-
-    const push = (dni, p) => {
-      const full = (p.nombre || "").trim();
-      out.push({
-        id: dni,
-        label: full || dni,
-        meta: metaLabel
-          ? `${metaLabel} · DNI - ${dni}`
-          : `DNI - ${dni}`,
-        nombre: full,
-        nombreCorto: shortName(full),
-        cargo: p.cargo || "",
-        dni: String(dni),
-      });
-    };
-
-    const dnis = Object.keys(map || {});
-
-    // Sin búsqueda: listado de previsualización (ordenado por nombre)
-    if (!q) {
-      const preview = dnis
-        .map((dni) => ({ dni, p: map[dni], nom: (map[dni]?.nombre || "").trim() }))
-        .sort((a, b) => a.nom.localeCompare(b.nom, "es") || a.dni.localeCompare(b.dni));
-      for (const row of preview) {
-        push(row.dni, row.p);
-        if (out.length >= minList) break;
-      }
-      return out;
-    }
-
-    for (const dni of dnis) {
-      const p = map[dni];
-      const nombre = (p.nombre || "").toLowerCase();
-      const byDni = digits.length >= 2 && dni.includes(digits);
-      const byName = q.length >= 2 && nombre.includes(q);
-      if (byDni || byName) {
-        push(dni, p);
-        if (out.length >= limit) break;
-      }
-    }
-    return out;
-  }
-
-  function searchTrabajadores(q) {
-    return personOptions(trabajadores, q, {
-      minList: 50,
-      limit: 80,
-    });
-  }
-
-  function searchSupervisores(q) {
-    return personOptions(supervisores, q, {
-      minList: 40,
-      limit: 60,
-    });
-  }
-
-  function mapToOpts(map, limit, metaLabel) {
-    const out = [];
-    for (const dni of Object.keys(map)) {
-      const p = map[dni];
-      const full = (p.nombre || "").trim();
-      out.push({
-        id: personLabel(dni, full),
-        label: full || dni,
-        meta: metaLabel ? `${metaLabel} · DNI ${dni}` : `DNI ${dni}`,
-        nombre: full,
-        nombreCorto: shortName(full),
-        dni,
-      });
-      if (out.length >= limit) break;
-    }
-    return out;
   }
 
   /** Lista fija de evaluadores (código + nombre). Solo catálogo oficial. */
@@ -511,8 +406,7 @@ QB.Data = (() => {
 
   function personByDni(kind, dni) {
     if (kind === "evaluador") return evaluadores[String(dni)] || null;
-    const map = kind === "supervisor" ? supervisores : trabajadores;
-    return map[String(dni)] || null;
+    return null;
   }
 
   function isReady() {
@@ -658,8 +552,6 @@ QB.Data = (() => {
     shortName,
     personLabel,
     formatStoredPerson,
-    searchTrabajadores,
-    searchSupervisores,
     evaluadorOptions,
     personByDni,
     moduloOptions,

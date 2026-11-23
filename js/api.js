@@ -16,14 +16,15 @@ QB.API = (() => {
   const LAST_SYNC_KEY = "qb_proy_last_sync_at";
   const EVAL_TYPES = ["proyecciones"];
   const TZ_OPS = "America/Lima";
-  const BATCH_SIZE = 4; // 3G: un grupo chico termina y se borra; 10 se queda esperando
+  const BATCH_SIZE = 4; // 3G/H+: lotes chicos confirman rápido y no se atascan
   // Tope si no hay respuesta. Con señal, se borra al confirmar el servidor.
-  const FETCH_TIMEOUT_MS = 45000;
+  const FETCH_TIMEOUT_MS = 35000;
   const MAX_ATTEMPTS = 12;
-  const MAX_BACKOFF_MS = 20 * 1000;
-  const WATCHDOG_STALE_MS = 100000;
-  const SYNC_PROGRESS_UI_MS = 450;
-  const YIELD_BETWEEN_BATCH_MS = 48;
+  const MAX_BACKOFF_MS = 12 * 1000;
+  const WATCHDOG_STALE_MS = 90000;
+  const SYNC_PROGRESS_UI_MS = 350;
+  const YIELD_BETWEEN_BATCH_MS = 24;
+  const SOFT_SEND_MS = 80;
 
   /** Cola en memoria + conteo O(1) para no recorrer 300 ítems en cada chip */
   let memQueue = [];
@@ -908,6 +909,14 @@ QB.API = (() => {
     }
     const rows = Array.isArray(item.rows) ? item.rows : [];
     const sampleCount = Number(d.sampleCount) || rows.length || 0;
+    let area = d.area;
+    if ((area == null || area === "") && rows[0]) {
+      area = rows[0].Area != null && rows[0].Area !== "" ? rows[0].Area : rows[0].area;
+    }
+    if ((area == null || area === "") && !light && window.QB?.Data?.loteMeta) {
+      const meta = QB.Data.loteMeta(d.loteNum || lote);
+      if (meta && meta.area != null && meta.area !== "") area = meta.area;
+    }
     return {
       id: item.clientId || at || `pending_${Math.random().toString(36).slice(2, 8)}`,
       clientId: item.clientId || "",
@@ -917,8 +926,13 @@ QB.API = (() => {
       cosechador: d.cosechador || "",
       variedad: d.variedad || "",
       lote,
+      loteNum: d.loteNum || "",
+      loteCode: d.lote || lote || "",
       modulo,
       turno,
+      area: area != null && area !== "" ? area : "",
+      fecha: d.fecha || "",
+      cartillaLabel: d.cartillaLabel || "Proyecciones",
       sampleCount,
       samples: rows.map((r, i) => ({
         n: r["N° Muestra"] != null ? r["N° Muestra"] : i + 1,
@@ -926,6 +940,7 @@ QB.API = (() => {
         abierta: r["Yema Abierta"] ?? "",
         e1: r["E1 (Verde)"] ?? "",
         e5: r["E5 (Maduro)"] ?? "",
+        Area: r.Area ?? r.area ?? "",
       })),
       nota: s.nota,
       calidadGlobal: s.calidadGlobal || "",
@@ -1147,7 +1162,7 @@ QB.API = (() => {
       return { ok: true, mode: "demo", message: "Guardado local", local: true, synced: true };
     }
 
-    if (navigator.onLine) scheduleSoftSend_();
+    if (navigator.onLine) scheduleSoftSend_(SOFT_SEND_MS, true);
 
     return {
       ok: true,
@@ -1224,6 +1239,7 @@ QB.API = (() => {
       if (!memQueue.some((x) => x.clientId === item.clientId)) continue;
       if (!navigator.onLine || watchdogFired) break;
       touchProgress_();
+      let ok = false;
       let aborted = false;
       try {
         const { res, json } = await fetchJson_(
@@ -1714,8 +1730,33 @@ QB.API = (() => {
     } catch (_) {}
   }
 
+  async function checkAcceso(dni) {
+    const id = String(dni || "").replace(/\D/g, "");
+    if (!/^\d{8}$/.test(id)) return { ok: false, activo: false, error: "DNI inválido" };
+    const base = apiUrl_();
+    if (!base || !navigator.onLine) return { ok: false, activo: null, offline: true };
+    const sep = base.includes("?") ? "&" : "?";
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const res = await fetch(`${base}${sep}action=acceso&dni=${encodeURIComponent(id)}`, {
+        method: "GET",
+        redirect: "follow",
+        cache: "no-store",
+        signal: ctrl.signal,
+      });
+      const json = await res.json();
+      return json && typeof json === "object" ? json : { ok: false, activo: null, offline: true };
+    } catch (_) {
+      return { ok: false, activo: null, offline: true };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   return {
     submit,
+    checkAcceso,
     flushQueue,
     flushUntilEmpty,
     newClientId: cryptoRandom,

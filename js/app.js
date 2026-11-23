@@ -7,12 +7,14 @@ QB.App = (() => {
   const DRAFT_KEY = "qb_proy_draft";
   const LOCAL_LIST_KEY = "qb_proy_local_list";
   const PREFS_KEY = "qb_proy_prefs";
+  const SESSION_KEY = "qb_proy_session";
 
   const state = {
     screen: "home",
     create: {
       evaluadorId: "",
       evaluadorNombre: "",
+      campana: "",
       modulo: "",
       turno: "",
       loteId: "",
@@ -27,7 +29,7 @@ QB.App = (() => {
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
   function emptySample_() {
-    const o = {};
+    const o = { observacion: "" };
     (QB.SAMPLE_FIELDS || []).forEach((f) => {
       o[f.id] = "";
     });
@@ -39,6 +41,18 @@ QB.App = (() => {
     if (!Array.isArray(cartilla.samples) || !cartilla.samples.length) {
       cartilla.samples = [emptySample_()];
     }
+    // Migrar observación vieja (de cartilla) a cada muestra si aún no tiene
+    const legacy = String(cartilla.observacion || "").trim();
+    cartilla.samples.forEach((s, i) => {
+      if (!s || typeof s !== "object") {
+        cartilla.samples[i] = emptySample_();
+        return;
+      }
+      if (s.observacion == null) s.observacion = "";
+      if (!String(s.observacion).trim() && legacy && i === 0) {
+        s.observacion = legacy;
+      }
+    });
     return cartilla.samples;
   }
 
@@ -86,10 +100,37 @@ QB.App = (() => {
       etapa: "",
       variedad: "",
       area: "",
+      campana: (QB.CONFIG && QB.CONFIG.CAMPANA_DEFAULT) || "2026 - II",
       observacion: "",
       samples,
       ...(partial || {}),
     };
+  }
+
+  function defaultCampana_() {
+    return (QB.CONFIG && QB.CONFIG.CAMPANA_DEFAULT) || "2026 - II";
+  }
+
+  function campanaOptions_(query) {
+    const q = String(query || "").trim().toLowerCase();
+    const list = (QB.CAMPANAS || []).map((c) => ({
+      id: c.id,
+      label: c.label || c.id,
+      meta: "Campaña",
+    }));
+    if (!list.length) {
+      const d = defaultCampana_();
+      return [{ id: d, label: d, meta: "Campaña" }];
+    }
+    if (!q) return list;
+    return list.filter(
+      (o) => o.label.toLowerCase().includes(q) || o.id.toLowerCase().includes(q)
+    );
+  }
+
+  function setCampanaLabel_(value) {
+    const el = $("#sel-campana-label");
+    if (el) el.textContent = value || defaultCampana_();
   }
 
   function todayISO_() {
@@ -154,6 +195,54 @@ QB.App = (() => {
       el.style.transition = "opacity .2s";
       setTimeout(() => el.remove(), 220);
     }, 2800);
+  }
+
+  async function ensureNotifyPermission_() {
+    try {
+      if (!("Notification" in window)) return false;
+      if (Notification.permission === "granted") return true;
+      if (Notification.permission === "denied") return false;
+      const p = await Notification.requestPermission();
+      return p === "granted";
+    } catch {
+      return false;
+    }
+  }
+
+  async function notifyPhone_(title, body, tag) {
+    try {
+      const ok = await ensureNotifyPermission_();
+      if (!ok) return;
+      const payload = {
+        type: "NOTIFY",
+        title: String(title || "Q Berries"),
+        body: String(body || ""),
+        tag: String(tag || "qb-proy-sync"),
+      };
+      if (navigator.serviceWorker) {
+        const reg = await navigator.serviceWorker.ready;
+        if (reg && reg.active) {
+          reg.active.postMessage(payload);
+          return;
+        }
+        if (reg && reg.showNotification) {
+          await reg.showNotification(payload.title, {
+            body: payload.body,
+            icon: "assets/icon-192.png",
+            badge: "assets/icon-192.png",
+            tag: payload.tag,
+            renotify: true,
+            vibrate: [90, 40, 90],
+          });
+          return;
+        }
+      }
+      new Notification(payload.title, {
+        body: payload.body,
+        icon: "assets/icon-192.png",
+        tag: payload.tag,
+      });
+    } catch (_) {}
   }
 
   function closeFeedback(result) {
@@ -231,17 +320,38 @@ QB.App = (() => {
 
   /* ——— Screens ——— */
   function showScreen(id) {
+    if (!readSession_()) {
+      setAuthUi_(false);
+      const gate = $("#qb-login");
+      if (gate) gate.hidden = false;
+      id = "home";
+    }
     state.screen = id;
     $$(".screen").forEach((s) => s.classList.toggle("active", s.id === `screen-${id}`));
     document.body.dataset.qbScreen = id;
     // Salir de cartilla: bajar barra (como Calidad)
     if (id !== "cartilla") resetKeyboardBar_();
+    // Asegura que las barras visibles reciban toques
+    const unlocked = !!readSession_();
+    $$("body > .form-actions").forEach((bar) => {
+      const on =
+        unlocked &&
+        ((id === "home" && bar.classList.contains("proy-home")) ||
+          (id === "cartilla" && bar.classList.contains("proy-cartilla")) ||
+          (id === "resumen" && bar.classList.contains("proy-resumen")));
+      bar.style.pointerEvents = on ? "auto" : "none";
+      bar.querySelectorAll(".btn").forEach((btn) => {
+        btn.style.pointerEvents = on ? "auto" : "none";
+      });
+    });
   }
 
   /** Saca las barras a body: si viven dentro del screen (overflow:hidden), Android las recorta/repinta */
   function mountActionBars_() {
     document
-      .querySelectorAll("#screen-home > .form-actions, #screen-cartilla > .form-actions")
+      .querySelectorAll(
+        "#screen-home > .form-actions, #screen-cartilla > .form-actions, #screen-resumen > .form-actions"
+      )
       .forEach((bar) => {
         document.body.appendChild(bar);
       });
@@ -268,6 +378,25 @@ QB.App = (() => {
     const list = readLocalList_().filter((x) => x.clientId !== entry.clientId);
     list.unshift(entry);
     writeLocalList_(list);
+  }
+
+  /** Si ya salió de la cola, deja de marcar "pending" en el historial local. */
+  function reconcileLocalListStatus_() {
+    const pending = pendingIds_();
+    const list = readLocalList_();
+    let changed = false;
+    for (let i = 0; i < list.length; i++) {
+      const x = list[i];
+      if (!x || !x.clientId) continue;
+      const stillPending = pending.has(x.clientId);
+      const next = stillPending ? "pending" : "sent";
+      if (x.status !== next) {
+        x.status = next;
+        changed = true;
+      }
+    }
+    if (changed) writeLocalList_(list);
+    return list;
   }
 
   function saveDraft_() {
@@ -308,6 +437,131 @@ QB.App = (() => {
     btn.classList.toggle("is-empty", !text || empty);
   }
 
+  function readSession_() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+      const dni = String(s && s.dni || "").replace(/\D/g, "");
+      if (!/^\d{8}$/.test(dni)) return null;
+      return { dni, nombre: String(s.nombre || "").trim() };
+    } catch {
+      return null;
+    }
+  }
+
+  function writeSession_(session) {
+    try {
+      if (!session) localStorage.removeItem(SESSION_KEY);
+      else localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    } catch (_) {}
+  }
+
+  function setAuthUi_(authed) {
+    const on = !!authed;
+    document.documentElement.classList.toggle("qb-authed", on);
+    document.documentElement.classList.toggle("qb-locked", !on);
+    document.body.classList.toggle("qb-authed", on);
+    document.body.classList.toggle("qb-locked", !on);
+  }
+
+  function showLogin_(message) {
+    setAuthUi_(false);
+    const gate = $("#qb-login");
+    const err = $("#login-error");
+    if (gate) gate.hidden = false;
+    if (err) {
+      err.hidden = !message;
+      err.textContent = message || "";
+    }
+  }
+
+  function hideLogin_() {
+    setAuthUi_(true);
+    const gate = $("#qb-login");
+    if (gate) gate.hidden = true;
+  }
+
+  function requireSession_(opts) {
+    const session = readSession_();
+    if (session) return session;
+    if (!opts || opts.show !== false) showLogin_((opts && opts.message) || "");
+    return null;
+  }
+
+  function applySession_(session) {
+    if (!session) return;
+    writePrefs_({ evaluadorId: session.dni, evaluadorNombre: session.nombre || "" });
+    const sub = $("#home-session");
+    if (sub) {
+      const corto = QB.Data && QB.Data.shortName ? QB.Data.shortName(session.nombre) : "";
+      sub.textContent = corto || session.nombre || session.dni;
+    }
+  }
+
+  function logout_(message) {
+    writeSession_(null);
+    writePrefs_({ evaluadorId: "", evaluadorNombre: "" });
+    state.create.evaluadorId = "";
+    state.create.evaluadorNombre = "";
+    state.cartilla = null;
+    try {
+      clearDraft_();
+    } catch (_) {}
+    try {
+      closeCreateModal({ force: true });
+    } catch (_) {}
+    try {
+      closeSyncModal();
+    } catch (_) {}
+    try {
+      showScreen("home");
+    } catch (_) {}
+    showLogin_(message || "");
+  }
+
+  async function entrar_() {
+    const dniEl = $("#login-dni");
+    const passEl = $("#login-pass");
+    const dni = String(dniEl && dniEl.value || "").replace(/\D/g, "");
+    const pass = String(passEl && passEl.value || "").replace(/\D/g, "");
+    const err = $("#login-error");
+    const say = (msg) => {
+      if (!err) return;
+      err.hidden = !msg;
+      err.textContent = msg || "";
+    };
+    if (!/^\d{8}$/.test(dni)) {
+      say("El DNI debe tener 8 dígitos.");
+      return;
+    }
+    if (pass !== dni) {
+      say("La contraseña es tu mismo DNI.");
+      return;
+    }
+    const btn = $("#btn-login");
+    if (btn) btn.disabled = true;
+    say("");
+    const res = await QB.API.checkAcceso(dni);
+    if (btn) btn.disabled = false;
+    if (!res || res.offline || res.activo == null) {
+      say("Sin señal. Entra cuando tengas internet.");
+      return;
+    }
+    if (res.activo !== true) {
+      say("Sin acceso. Este DNI está desactivado.");
+      return;
+    }
+    const session = { dni, nombre: res.nombre || "" };
+    writeSession_(session);
+    applySession_(session);
+    if (passEl) passEl.value = "";
+    hideLogin_();
+    showScreen("home");
+    updateOnlineUi();
+    updatePendingUi();
+    renderHomeList();
+    ensureNotifyPermission_().catch(() => {});
+  }
+
   function readPrefs_() {
     try {
       const p = JSON.parse(localStorage.getItem(PREFS_KEY) || "null");
@@ -321,8 +575,8 @@ QB.App = (() => {
     try {
       const next = { ...readPrefs_(), ...patch };
       localStorage.setItem(PREFS_KEY, JSON.stringify(next));
-          } catch (_) {}
-        }
+    } catch (_) {}
+  }
 
   function cartillaOptions_(query) {
     const q = String(query || "").trim().toLowerCase();
@@ -330,6 +584,7 @@ QB.App = (() => {
       id: c.id,
       label: c.label,
       meta: c.meta || "Cartilla",
+      disabled: !!c.disabled,
     }));
     if (!q) return list;
     return list.filter(
@@ -343,33 +598,48 @@ QB.App = (() => {
       id: "proyecciones",
       label: "Proyecciones",
     };
-    const cartillaId = prefs.cartillaId || defaultCartilla.id;
-    const cartillaLabel =
-      prefs.cartillaLabel ||
-      ((QB.CARTILLAS || []).find((c) => c.id === cartillaId) || defaultCartilla).label;
+    const session = readSession_();
+    const campana = prefs.campana || defaultCampana_();
+    // Tras guardar, módulo/turno/lote quedan vacíos para elegir de nuevo
     state.create = {
-      evaluadorId: prefs.evaluadorId || "",
-      evaluadorNombre: prefs.evaluadorNombre || "",
-      cartillaId,
-      cartillaLabel,
-      modulo: prefs.modulo || "",
-      turno: prefs.turno || "",
+      evaluadorId: (session && session.dni) || "",
+      evaluadorNombre: (session && session.nombre) || "",
+      cartillaId: defaultCartilla.id,
+      cartillaLabel: defaultCartilla.label,
+      campana,
+      modulo: "",
+      turno: "",
       loteId: "",
       loteMeta: null,
     };
-    setSelectLabel(
-      $("#sel-evaluador"),
-      prefs.evaluadorNombre
-        ? QB.Data.shortName(prefs.evaluadorNombre) || prefs.evaluadorNombre
-        : ""
-    );
-    setSelectLabel($("#sel-cartilla"), cartillaLabel || "");
-    setSelectLabel($("#sel-modulo"), prefs.modulo || "");
-    setSelectLabel($("#sel-turno"), prefs.turno ? `Turno ${prefs.turno}` : "");
+    setSelectLabel($("#sel-cartilla"), defaultCartilla.label || "");
+    setCampanaLabel_(campana);
+    setSelectLabel($("#sel-modulo"), "");
+    setSelectLabel($("#sel-turno"), "");
+    setSelectLabel($("#sel-lote"), "");
+  }
+
+  function clearSelectsAfterSave_() {
+    writePrefs_({
+      modulo: "",
+      turno: "",
+      cartillaId: "proyecciones",
+      cartillaLabel: "Proyecciones",
+    });
+    state.create.modulo = "";
+    state.create.turno = "";
+    state.create.loteId = "";
+    state.create.loteMeta = null;
+    state.create.cartillaId = "proyecciones";
+    state.create.cartillaLabel = "Proyecciones";
+    setSelectLabel($("#sel-cartilla"), "Proyecciones");
+    setSelectLabel($("#sel-modulo"), "");
+    setSelectLabel($("#sel-turno"), "");
     setSelectLabel($("#sel-lote"), "");
   }
 
   async function openCreateModal() {
+    if (!requireSession_()) return;
     const draft = loadDraft_();
     if (draft && draft.cartilla) {
       const cont = await feedback({
@@ -390,30 +660,33 @@ QB.App = (() => {
     resetCreateForm_();
     const modal = $("#create-modal");
     if (!modal) return;
+    createOpenedAt_ = Date.now();
     modal.hidden = false;
-    requestAnimationFrame(() => modal.classList.add("open"));
+    modal.classList.add("open");
   }
 
-  function closeCreateModal() {
+  let createOpenedAt_ = 0;
+
+  function closeCreateModal(opts) {
     const modal = $("#create-modal");
     if (!modal) return;
+    // Evita que el mismo toque de CREAR cierre el modal al instante
+    if (!(opts && opts.force) && Date.now() - createOpenedAt_ < 450) return;
     modal.classList.remove("open");
     setTimeout(() => {
       modal.hidden = true;
     }, 180);
   }
 
-  function openEvaluadorSelect() {
+  function openCampanaSelect() {
     QB.PreciseSelect.open({
-      title: "Evaluador",
-      placeholder: "Buscar nombre o DNI…",
-      value: state.create.evaluadorId,
-      listColumns: true,
-      getOptions: (q) => QB.Data.evaluadorOptions(q),
+      title: "Campaña",
+      hideSearch: true,
+      value: state.create.campana || defaultCampana_(),
+      getOptions: (q) => campanaOptions_(q),
       onSelect: (opt) => {
-        state.create.evaluadorId = opt.dni || String(opt.id).replace(/\D.*/, "") || opt.id;
-        state.create.evaluadorNombre = opt.nombre || opt.label || "";
-        setSelectLabel($("#sel-evaluador"), opt.nombreCorto || opt.label || state.create.evaluadorNombre);
+        state.create.campana = opt.id || opt.label;
+        setCampanaLabel_(state.create.campana);
       },
     });
   }
@@ -421,13 +694,18 @@ QB.App = (() => {
   function openCartillaSelect() {
     QB.PreciseSelect.open({
       title: "Cartilla",
-      placeholder: "Buscar cartilla…",
+      hideSearch: true,
       value: state.create.cartillaId,
       getOptions: (q) => cartillaOptions_(q),
       onSelect: (opt) => {
+        if (!opt || opt.disabled) {
+          toast("Biometría aún no está disponible", "warn");
+          return;
+        }
         state.create.cartillaId = opt.id;
         state.create.cartillaLabel = opt.label;
         setSelectLabel($("#sel-cartilla"), opt.label);
+        writePrefs_({ cartillaId: opt.id, cartillaLabel: opt.label });
       },
     });
   }
@@ -435,7 +713,7 @@ QB.App = (() => {
   function openModuloSelect() {
     QB.PreciseSelect.open({
       title: "Módulo",
-      placeholder: "Buscar módulo…",
+      hideSearch: true,
       value: state.create.modulo,
       getOptions: (q) => QB.Data.moduloOptions(q),
       onSelect: (opt) => {
@@ -457,7 +735,7 @@ QB.App = (() => {
     }
     QB.PreciseSelect.open({
       title: "Turno",
-      placeholder: "Buscar turno…",
+      hideSearch: true,
       value: state.create.turno,
       getOptions: (q) => QB.Data.turnoOptions(state.create.modulo, q),
       onSelect: (opt) => {
@@ -477,7 +755,7 @@ QB.App = (() => {
     }
     QB.PreciseSelect.open({
       title: "Lote",
-      placeholder: "Buscar lote…",
+      hideSearch: true,
       value: state.create.loteId,
       getOptions: (q) =>
         QB.Data.lotesForModuloTurno(state.create.modulo, state.create.turno, q),
@@ -490,34 +768,57 @@ QB.App = (() => {
     });
   }
 
+  /** Pregunta a la nube. Solo bloquea si responde activo:false. Sin señal no cierra la sesión. */
+  async function revisarAccesoDni_(dni, opts) {
+    const id = String(dni || "").replace(/\D/g, "");
+    if (!/^\d{8}$/.test(id) || !QB.API.checkAcceso) return true;
+    const res = await QB.API.checkAcceso(id);
+    if (!res || res.offline || res.activo == null) return true;
+    if (res.activo === true) return true;
+    toast("Sin acceso. Este DNI está desactivado.", "warn");
+    if (opts && opts.clear) logout_("Sin acceso. Este DNI está desactivado.");
+    return false;
+  }
+
   function confirmCreate() {
     const c = state.create;
-    if (!c.evaluadorNombre && !c.evaluadorId) {
-      toast("Selecciona evaluador", "warn");
+    const session = readSession_();
+    if (!session || !session.dni) {
+      toast("Inicia sesión para crear", "warn");
+      showLogin_("");
       return;
     }
+    c.evaluadorId = session.dni;
+    c.evaluadorNombre = session.nombre || c.evaluadorNombre || "";
     if (!c.cartillaId) {
       toast("Selecciona cartilla", "warn");
       return;
     }
+    const cartillaDef = (QB.CARTILLAS || []).find((x) => x.id === c.cartillaId);
+    if (cartillaDef && cartillaDef.disabled) {
+      toast("Esa cartilla aún no está disponible", "warn");
+      return;
+    }
     if (!c.modulo) {
       toast("Selecciona módulo", "warn");
-        return;
-      }
+      return;
+    }
     if (!c.turno) {
       toast("Selecciona turno", "warn");
-        return;
-      }
+      return;
+    }
     if (!c.loteId) {
       toast("Selecciona lote", "warn");
       return;
     }
     const meta = c.loteMeta || QB.Data.loteMeta(c.loteId);
+    const campana = c.campana || defaultCampana_();
     writePrefs_({
       evaluadorId: c.evaluadorId,
       evaluadorNombre: c.evaluadorNombre,
       cartillaId: c.cartillaId,
       cartillaLabel: c.cartillaLabel,
+      campana,
       modulo: c.modulo,
       turno: c.turno,
     });
@@ -528,6 +829,7 @@ QB.App = (() => {
       evaluadorNombre: c.evaluadorNombre,
       cartillaId: c.cartillaId,
       cartillaLabel: c.cartillaLabel || "Proyecciones",
+      campana,
       modulo: QB.Data.normalizeModulo(meta.modulo || c.modulo),
       turno: String(meta.turno || c.turno),
       loteId: c.loteId,
@@ -535,21 +837,132 @@ QB.App = (() => {
       loteCode: QB.Data.formatLoteCode(meta) || String(meta.codLote || c.loteId),
       etapa: meta.etapa || "",
       variedad: meta.variedad || "",
-      area: "",
+      area: meta.area != null && meta.area !== "" ? meta.area : "",
       observacion: "",
     });
-    closeCreateModal();
+    // Abrir ya: el GET de acceso a Google puede tardar varios segundos
+    closeCreateModal({ force: true });
     openCartilla(cartilla, 0);
+    revisarAccesoDni_(c.evaluadorId, { clear: true });
   }
 
   /* ——— Cartilla ——— */
+  let cartillaReadyAt_ = 0;
+
   function openCartilla(cartilla, muestraIndex) {
+    if (!requireSession_()) return;
     state.cartilla = cartilla;
     const total = sampleCount_(cartilla);
     state.muestraIndex = Math.max(0, Math.min(total - 1, Number(muestraIndex) || 0));
+    // Bloquea RESUMEN un momento: el toque de CREAR no debe disparar el paso siguiente
+    cartillaReadyAt_ = Date.now() + 700;
+    const resumenBtn = $("#btn-ir-resumen");
+    if (resumenBtn) resumenBtn.style.pointerEvents = "none";
     showScreen("cartilla");
     renderCartilla();
     saveDraft_();
+    setTimeout(() => {
+      const btn = $("#btn-ir-resumen");
+      if (btn) btn.style.pointerEvents = "";
+    }, 700);
+  }
+
+  function renderResumen_() {
+    const c = state.cartilla;
+    if (!c) return;
+    const samples = ensureSamples_(c).filter(sampleHasData_);
+    const sub = $("#resumen-code-sub");
+    const metaEl = $("#resumen-meta");
+    const listEl = $("#resumen-samples");
+    const obsEl = $("#resumen-obs");
+    if (sub) sub.textContent = c.loteCode || "Resumen";
+    if (metaEl) {
+      metaEl.innerHTML = `
+        <div class="resumen-meta-main">
+          <p class="resumen-meta-kicker">Ubicación</p>
+          <strong class="resumen-meta-lote">${escapeHtml(c.loteCode || "—")}</strong>
+          <div class="resumen-meta-row">
+            <span><em>Módulo</em><b>${escapeHtml(c.modulo || "—")}</b></span>
+            <span><em>Turno</em><b>${escapeHtml(c.turno || "—")}</b></span>
+            <span><em>Lote</em><b>${escapeHtml(c.loteNum || "—")}</b></span>
+          </div>
+        </div>
+        <div class="resumen-meta-side">
+          <span><em>Campaña</em><b>${escapeHtml(c.campana || defaultCampana_())}</b></span>
+          <span><em>Muestras</em><b>${samples.length}</b></span>
+        </div>`;
+    }
+    const fields = QB.SAMPLE_FIELDS || [];
+    if (listEl) {
+      listEl.innerHTML = samples
+        .map((s, i) => {
+          const cells = fields
+            .map((f) => {
+              const v = s[f.id];
+              const show = v === "" || v == null ? "—" : escapeHtml(v);
+              const full = f.id === "e5" ? " is-full" : "";
+              return `<div class="resumen-cell${full}"><em>${escapeHtml(f.label)}</em><b>${show}</b></div>`;
+            })
+            .join("");
+          const sampleObs = String(s.observacion || "").trim();
+          return `<article class="resumen-sample">
+            <header><span>Muestra</span><strong>${i + 1}</strong></header>
+            <div class="resumen-grid">${cells}</div>
+            <div class="resumen-sample-obs"><em>Observación</em><b>${
+              sampleObs ? escapeHtml(sampleObs) : "—"
+            }</b></div>
+          </article>`;
+        })
+        .join("");
+    }
+    if (obsEl) obsEl.hidden = true;
+  }
+
+  let resumenReadyAt_ = 0;
+
+  async function irResumen_() {
+    if (!requireSession_()) return;
+    if (!state.cartilla) return;
+    if (Date.now() < cartillaReadyAt_) return;
+    const c = state.cartilla;
+    pruneEmptySamples_(c);
+    renderCartilla();
+    const samples = ensureSamples_(c).filter(sampleHasData_);
+    if (!samples.length) {
+      await feedback({
+        title: "No hay data",
+        text: "No se puede continuar. Completa al menos un campo en la muestra antes de ver el resumen.",
+        type: "warn",
+        confirmText: "Entendido",
+      });
+      return;
+    }
+    const emptyIdx = emptySampleIndexes_(c);
+    if (emptyIdx.length) {
+      await feedback({
+        title: "Hay muestras vacías",
+        text: `Completa o quita estas muestras antes del resumen: ${emptyIdx
+          .map((n) => `Muestra ${n}`)
+          .join(", ")}.`,
+        type: "warn",
+        confirmText: "Entendido",
+      });
+      return;
+    }
+    saveDraft_();
+    renderResumen_();
+    // Evita que el mismo toque de RESUMEN dispare GUARDAR
+    resumenReadyAt_ = Date.now() + 900;
+    showScreen("resumen");
+  }
+
+  function volverEditarResumen_() {
+    if (!state.cartilla) {
+      showScreen("home");
+      return;
+    }
+    showScreen("cartilla");
+    renderCartilla();
   }
 
   function renderCartilla() {
@@ -588,7 +1001,9 @@ QB.App = (() => {
       fieldsHtml +
       `<label class="cartilla-obs">
         <span>Observación</span>
-        <textarea id="cartilla-obs" rows="3" placeholder="Opcional">${escapeHtml(c.observacion || "")}</textarea>
+        <textarea id="cartilla-obs" rows="3" placeholder="Opcional · solo esta muestra">${escapeHtml(
+          sample.observacion || ""
+        )}</textarea>
       </label>`;
 
     const fieldInputs = [...root.querySelectorAll("input[data-field]")];
@@ -612,7 +1027,10 @@ QB.App = (() => {
     const obs = $("#cartilla-obs");
     if (obs) {
       obs.addEventListener("input", () => {
-        state.cartilla.observacion = obs.value;
+        if (!state.cartilla.samples[state.muestraIndex]) {
+          state.cartilla.samples[state.muestraIndex] = emptySample_();
+        }
+        state.cartilla.samples[state.muestraIndex].observacion = obs.value;
         saveDraft_();
       });
     }
@@ -728,7 +1146,7 @@ QB.App = (() => {
         navigator.virtualKeyboard.overlaysContent = true;
         navigator.virtualKeyboard.addEventListener("geometrychange", onPaint);
       }
-    } catch (_) {}
+      } catch (_) {}
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", onPaint, { passive: true });
@@ -765,8 +1183,8 @@ QB.App = (() => {
           type: "warn",
           confirmText: "Entendido",
         });
-        return;
-      }
+      return;
+    }
       samples.push(emptySample_());
     }
     state.muestraIndex = next;
@@ -776,13 +1194,8 @@ QB.App = (() => {
 
   function buildRowsForSave_(cartilla) {
     const semana = isoWeek_(cartilla.fecha);
-    const evaluador =
-      cartilla.evaluadorNombre ||
-      (cartilla.evaluadorId
-        ? QB.Data.formatStoredPerson(
-            `${cartilla.evaluadorId} — ${cartilla.evaluadorNombre || ""}`
-          )
-        : "");
+    const nombre = String(cartilla.evaluadorNombre || "").trim();
+    const dni = String(cartilla.evaluadorId || "").replace(/\D/g, "");
     const samples = ensureSamples_(cartilla).filter(sampleHasData_);
     const rows = [];
     for (let i = 0; i < samples.length; i++) {
@@ -790,9 +1203,10 @@ QB.App = (() => {
       const row = {
         Lote: cartilla.loteCode || "",
         Fecha: cartilla.fecha || todayISO_(),
-        Evaluador: evaluador,
+        DNI: dni,
+        Nombre: nombre,
         "N° Muestra": i + 1,
-        Observación: cartilla.observacion || "",
+        Observación: s.observacion || "",
         "Foto cabecera": "",
         Modulo: cartilla.modulo || "",
         Turno: cartilla.turno || "",
@@ -801,6 +1215,7 @@ QB.App = (() => {
         Etapa: cartilla.etapa || "",
         Variedad: cartilla.variedad || "",
         Area: cartilla.area || "",
+        Campaña: cartilla.campana || defaultCampana_(),
       };
       (QB.SAMPLE_FIELDS || []).forEach((f) => {
         const v = s[f.id];
@@ -812,34 +1227,35 @@ QB.App = (() => {
   }
 
   async function guardarCartilla() {
+    if (!requireSession_()) return;
     if (state.saving || !state.cartilla) return;
+    if (state.screen !== "resumen") {
+      await irResumen_();
+      return;
+    }
+    if (Date.now() < resumenReadyAt_) return;
     const c = state.cartilla;
     pruneEmptySamples_(c);
+    const samples = ensureSamples_(c).filter(sampleHasData_);
+    if (!samples.length) {
+      await feedback({
+        title: "No hay data",
+        text: "No se puede guardar. No hay muestras con datos. Vuelve a editar y completa al menos un campo.",
+        type: "warn",
+        confirmText: "Entendido",
+      });
+      return;
+    }
     const emptyIdx = emptySampleIndexes_(c);
     if (emptyIdx.length) {
       await feedback({
         title: "No se puede guardar vacío",
-        text:
-          emptyIdx.length === ensureSamples_(c).length
-            ? "Completa al menos un campo en la muestra antes de guardar."
-            : `Hay muestras sin datos: ${emptyIdx.map((n) => `Muestra ${n}`).join(", ")}.\nCompleta cada muestra o vuelve atrás y no las dejes vacías.`,
+        text: `Hay muestras sin datos: ${emptyIdx.map((n) => `Muestra ${n}`).join(", ")}. Vuelve a editar y completa cada muestra.`,
         type: "warn",
         confirmText: "Entendido",
       });
-      renderCartilla();
       return;
     }
-
-    const samples = ensureSamples_(c).filter(sampleHasData_);
-    const n = samples.length;
-    const ok = await feedback({
-      title: `¿Guardar ${n} muestra${n === 1 ? "" : "s"}?`,
-      text: `Se van a guardar ${n} muestra${n === 1 ? "" : "s"} con data.`,
-      type: "info",
-      confirmText: "Sí, guardar",
-      cancelText: "Cancelar",
-    });
-    if (!ok) return;
 
     state.saving = true;
     setLoader(true, "Guardando…");
@@ -847,21 +1263,26 @@ QB.App = (() => {
       const clientId = c.clientId || QB.API.newClientId();
       c.clientId = clientId;
       const rows = buildRowsForSave_(c);
+      const nombre = String(c.evaluadorNombre || "").trim();
+      const dni = String(c.evaluadorId || "").replace(/\D/g, "");
       const payload = {
         type: "proyecciones",
         sheet: "Proyecciones",
         clientId,
         data: {
           fecha: c.fecha,
-          evaluador: rows[0] && rows[0].Evaluador,
-          evaluadorId: c.evaluadorId,
+          evaluador: dni && nombre ? `${dni} — ${nombre}` : nombre,
+          evaluadorId: dni,
+          nombre,
           modulo: c.modulo,
           turno: c.turno,
           lote: c.loteCode,
           loteNum: c.loteNum,
           etapa: c.etapa,
           variedad: c.variedad,
-          observacion: c.observacion,
+          area: c.area,
+          campana: c.campana || defaultCampana_(),
+          observacion: "",
           sampleCount: rows.length,
         },
         rows,
@@ -876,6 +1297,10 @@ QB.App = (() => {
         modulo: c.modulo,
         turno: c.turno,
         loteNum: c.loteNum,
+        variedad: c.variedad || "",
+        area: c.area != null && c.area !== "" ? c.area : "",
+        etapa: c.etapa || "",
+        campana: c.campana || defaultCampana_(),
         cartillaLabel: c.cartillaLabel || "Proyecciones",
         evaluador: payload.data.evaluador,
         sampleCount: rows.length,
@@ -891,6 +1316,7 @@ QB.App = (() => {
       });
       clearDraft_();
       state.cartilla = null;
+      clearSelectsAfterSave_();
       renderHomeList();
       showScreen("home");
       const n = rows.length;
@@ -965,23 +1391,36 @@ QB.App = (() => {
     const bits = [c.loteCode || c.modulo, c.fecha].filter(Boolean).join(" · ");
     if (textEl) textEl.textContent = bits || "Continuar cartilla";
     if (section) section.hidden = false;
-    banner.onclick = () => openCartilla(c, draft.muestraIndex || 0);
+    banner.onclick = null;
+    fastTap_(banner, () => openCartilla(c, draft.muestraIndex || 0));
   }
 
-  function formatLastSendTime_(ts) {
+  function formatLastSendParts_(ts) {
     const n = Number(ts) || 0;
-    if (!n) return "";
+    if (!n) return { date: "", time: "" };
     try {
-      return new Intl.DateTimeFormat("es-PE", {
+      const d = new Date(n);
+      const date = new Intl.DateTimeFormat("es-PE", {
         timeZone: "America/Lima",
         day: "2-digit",
         month: "short",
+      }).format(d);
+      const time = new Intl.DateTimeFormat("es-PE", {
+        timeZone: "America/Lima",
         hour: "2-digit",
         minute: "2-digit",
-      }).format(new Date(n));
+      }).format(d);
+      return { date, time };
     } catch {
-      return new Date(n).toLocaleString("es-PE");
+      const s = new Date(n).toLocaleString("es-PE");
+      return { date: s, time: "" };
     }
+  }
+
+  function formatLastSendTime_(ts) {
+    const p = formatLastSendParts_(ts);
+    if (!p.date && !p.time) return "";
+    return [p.date, p.time].filter(Boolean).join(", ");
   }
 
   function renderLastSend_() {
@@ -992,27 +1431,37 @@ QB.App = (() => {
     const cardEl = $("#last-send-card");
     if (!titleEl || !textEl) return;
 
+    const list = reconcileLocalListStatus_();
     const pending = pendingIds_();
-    const list = readLocalList_();
     const latest = list.find((x) => x && x.clientId) || null;
     const syncAt = QB.API.getLastSyncAt ? QB.API.getLastSyncAt() : 0;
 
     if (latest) {
-      const isPending = pending.has(latest.clientId) || latest.status === "pending";
-      const when = formatLastSendTime_(latest.at || syncAt);
+      const isPending = pending.has(latest.clientId);
+      const parts = formatLastSendParts_(latest.at || syncAt);
       const n = Number(latest.sampleCount) || (Array.isArray(latest.samples) ? latest.samples.length : 0);
+      const samplesTxt = n > 0 ? `${n} muestra${n === 1 ? "" : "s"}` : "";
       titleEl.textContent = latest.loteCode || latest.cartillaLabel || "Cartilla";
       if (typeEl) {
         typeEl.hidden = false;
         typeEl.textContent = latest.cartillaLabel || "Proyecciones";
       }
-      textEl.textContent = [
-        latest.fecha || "",
-        when || "",
-        n > 0 ? `${n} muestra${n === 1 ? "" : "s"}` : "",
-      ]
-        .filter(Boolean)
-        .join(" · ");
+      const line1 = [latest.fecha || "", parts.date].filter(Boolean).join(" · ");
+      const line2 = [parts.time, samplesTxt].filter(Boolean).join(" · ");
+      textEl.innerHTML = "";
+      if (line1) {
+        const a = document.createElement("span");
+        a.className = "last-send-line";
+        a.textContent = line1;
+        textEl.appendChild(a);
+      }
+      if (line2) {
+        const b = document.createElement("span");
+        b.className = "last-send-line";
+        b.textContent = line2;
+        textEl.appendChild(b);
+      }
+      if (!line1 && !line2) textEl.textContent = "—";
       if (badgeEl) {
         badgeEl.hidden = false;
         badgeEl.textContent = isPending ? "Pendiente" : "Enviado";
@@ -1026,13 +1475,23 @@ QB.App = (() => {
     }
 
     if (syncAt) {
-      const when = formatLastSendTime_(syncAt);
+      const parts = formatLastSendParts_(syncAt);
       titleEl.textContent = "Sincronización reciente";
       if (typeEl) {
         typeEl.hidden = false;
         typeEl.textContent = "Proyecciones";
       }
-      textEl.textContent = when ? `Último sync · ${when}` : "Cola sincronizada";
+      textEl.innerHTML = "";
+      const a = document.createElement("span");
+      a.className = "last-send-line";
+      a.textContent = "Último sync";
+      textEl.appendChild(a);
+      if (parts.date || parts.time) {
+        const b = document.createElement("span");
+        b.className = "last-send-line";
+        b.textContent = [parts.date, parts.time].filter(Boolean).join(", ");
+        textEl.appendChild(b);
+      }
       if (badgeEl) {
         badgeEl.hidden = false;
         badgeEl.textContent = "Enviado";
@@ -1072,6 +1531,7 @@ QB.App = (() => {
   }
 
   function updatePendingUi() {
+    reconcileLocalListStatus_();
     const n = QB.API.pendingCount ? QB.API.pendingCount() : 0;
     $$("#chip-pending, [data-chip-pending]").forEach((chip) => {
       if (!chip) return;
@@ -1225,10 +1685,113 @@ QB.App = (() => {
   }
 
   function openHistorial() {
+    if (!requireSession_()) return;
     showScreen("historial");
-    renderHistorial();
-    updateOnlineUi();
-    updatePendingUi();
+    const go = () => {
+      renderHistorial();
+      updateOnlineUi();
+      updatePendingUi();
+    };
+    if (QB.Data && QB.Data.ensureCatalogs) {
+      Promise.resolve(QB.Data.ensureCatalogs()).then(go).catch(go);
+    } else {
+      go();
+    }
+  }
+
+  function histPeso_() {
+    const n = Number(QB.CONFIG && QB.CONFIG.PESO_BAYA_G);
+    return Number.isFinite(n) && n > 0 ? n : 2.6;
+  }
+
+  function histDensidad_() {
+    const n = Number(QB.CONFIG && QB.CONFIG.DENSIDAD_PLANTAS_HA);
+    return Number.isFinite(n) && n > 0 ? n : 6500;
+  }
+
+  function avgE5_(samples) {
+    if (!Array.isArray(samples) || !samples.length) return null;
+    let sum = 0;
+    let n = 0;
+    samples.forEach((s) => {
+      const v = Number(String(s && s.e5 != null ? s.e5 : "").replace(",", "."));
+      if (Number.isFinite(v)) {
+        sum += v;
+        n += 1;
+      }
+    });
+    return n ? sum / n : null;
+  }
+
+  function positiveArea_(v) {
+    if (v == null || v === "") return null;
+    const n = Number(String(v).replace(",", "."));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function enrichHistRow_(raw, statusHint) {
+    const loteCode = raw.lote || raw.loteCode || "";
+    const loteKey = raw.loteNum || loteCode;
+    const meta =
+      (QB.Data && QB.Data.loteMeta && loteKey ? QB.Data.loteMeta(loteKey) : null) || {};
+    const metaAlt =
+      loteCode && loteCode !== loteKey && QB.Data && QB.Data.loteMeta
+        ? QB.Data.loteMeta(loteCode)
+        : null;
+    const rowArea =
+      Array.isArray(raw.samples) && raw.samples[0]
+        ? raw.samples[0].Area ?? raw.samples[0].area
+        : null;
+    const area =
+      positiveArea_(raw.area) ||
+      positiveArea_(meta.area) ||
+      positiveArea_(metaAlt && metaAlt.area) ||
+      positiveArea_(rowArea) ||
+      null;
+    const bayas = avgE5_(raw.samples);
+    const peso = histPeso_();
+    const kgHa =
+      bayas != null ? Math.round((bayas * peso * histDensidad_()) / 1000) : null;
+    const kgTot = kgHa != null && area != null ? Math.round(kgHa * area) : null;
+    const pending =
+      statusHint != null ? statusHint === "pending" : raw.status === "pending";
+    return {
+      clientId: raw.clientId || raw.id || "",
+      fecha: raw.fecha || (raw.at ? String(raw.at).slice(0, 10) : todayISO_()),
+      at: raw.at || "",
+      status: pending ? "pending" : "sent",
+      modulo: raw.modulo || meta.modulo || (metaAlt && metaAlt.modulo) || "—",
+      turno:
+        raw.turno != null && raw.turno !== ""
+          ? String(raw.turno)
+          : meta.turno || (metaAlt && metaAlt.turno) || "—",
+      variedad: raw.variedad || meta.variedad || (metaAlt && metaAlt.variedad) || "—",
+      area,
+      bayas,
+      peso,
+      kgHa,
+      kgTot,
+      loteCode,
+    };
+  }
+
+  function fmtNum_(n, dec) {
+    if (n == null || !Number.isFinite(n)) return "—";
+    return Number(n).toLocaleString("es-PE", {
+      minimumFractionDigits: dec,
+      maximumFractionDigits: dec,
+    });
+  }
+
+  function fmtFechaHist_(fecha) {
+    const s = String(fecha || "");
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    try {
+      return new Date(fecha).toLocaleDateString("es-PE");
+    } catch {
+      return s || "—";
+    }
   }
 
   function renderHistorial() {
@@ -1245,8 +1808,13 @@ QB.App = (() => {
       history = [];
     }
 
-    // Completar con lista local enviada (por si activity está vacío)
+    reconcileLocalListStatus_();
     const pendingIds = pendingIds_();
+    const localById = {};
+    readLocalList_().forEach((x) => {
+      if (x && x.clientId) localById[x.clientId] = x;
+    });
+
     const localSent = readLocalList_()
       .filter((x) => x && !pendingIds.has(x.clientId))
       .map((x) => ({
@@ -1254,30 +1822,37 @@ QB.App = (() => {
         clientId: x.clientId,
         status: "sent",
         at: x.at ? new Date(x.at).toISOString() : "",
+        fecha: x.fecha || "",
         lote: x.loteCode || "",
+        loteCode: x.loteCode || "",
+        loteNum: x.loteNum || "",
         modulo: x.modulo || "",
         turno: x.turno || "",
+        variedad: x.variedad || "",
+        area: x.area,
         evaluador: x.evaluador || "",
-        type: "proyecciones",
         cartillaLabel: x.cartillaLabel || "Proyecciones",
         sampleCount: x.sampleCount || (Array.isArray(x.samples) ? x.samples.length : 0) || 0,
         samples: Array.isArray(x.samples) ? x.samples : [],
       }));
 
-    // Enriquecer pendientes de cola con samples locales
-    const localById = {};
-    readLocalList_().forEach((x) => {
-      if (x && x.clientId) localById[x.clientId] = x;
-    });
     history = history.map((h) => {
       const loc = localById[h.clientId];
       if (!loc) return h;
-          return {
+      return {
         ...h,
+        fecha: h.fecha || loc.fecha || "",
         sampleCount: h.sampleCount || loc.sampleCount || 0,
         samples: (h.samples && h.samples.length ? h.samples : loc.samples) || [],
         cartillaLabel: h.cartillaLabel || loc.cartillaLabel || "Proyecciones",
         lote: h.lote || loc.loteCode || "",
+        loteCode: h.lote || loc.loteCode || "",
+        loteNum: h.loteNum || loc.loteNum || "",
+        modulo: h.modulo || loc.modulo || "",
+        turno: h.turno || loc.turno || "",
+        variedad: h.variedad || loc.variedad || "",
+        area: h.area != null && h.area !== "" ? h.area : loc.area,
+        evaluador: h.evaluador || loc.evaluador || "",
       };
     });
 
@@ -1290,108 +1865,259 @@ QB.App = (() => {
       }
     });
 
+    readLocalList_().forEach((x) => {
+      if (!x || !x.clientId || !pendingIds.has(x.clientId)) return;
+      const id = String(x.clientId);
+      if (seen.has(id)) return;
+      seen.add(id);
+      history.push({
+        ...x,
+        status: "pending",
+        lote: x.loteCode || "",
+        at: x.at ? new Date(x.at).toISOString() : "",
+      });
+    });
+
     history.sort(
       (a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime()
     );
 
-    const sentN = history.filter((h) => h.status === "sent").length;
+    const rows = history.map((h) =>
+      enrichHistRow_(
+        {
+          ...h,
+          evaluador: h.evaluador || "",
+          cartillaLabel: h.cartillaLabel || "Proyecciones",
+          sampleCount: h.sampleCount || (Array.isArray(h.samples) ? h.samples.length : 0) || 0,
+        },
+        pendingIds.has(h.clientId) ? "pending" : "sent"
+      )
+    );
+
+    const sentN = rows.filter((r) => r.status === "sent").length;
     if (sumEl) {
-      sumEl.textContent = `${pendingN} pendiente${pendingN === 1 ? "" : "s"} · ${sentN} enviado${sentN === 1 ? "" : "s"}`;
+      sumEl.textContent = `${pendingN} pendiente${pendingN === 1 ? "" : "s"} · ${sentN} enviado${sentN === 1 ? "" : "s"} · Peso ${fmtNum_(histPeso_(), 2)} g`;
     }
 
-    if (!history.length) {
+    if (!rows.length) {
       listEl.innerHTML = "";
       if (emptyEl) emptyEl.hidden = false;
       return;
     }
     if (emptyEl) emptyEl.hidden = true;
 
-    listEl.innerHTML = history
-      .map((h, idx) => {
-        const st = h.status === "sent" ? "sent" : "pending";
-        const stLabel = st === "sent" ? "Enviado" : "En cola";
-        const lote = escapeHtml(h.lote || h.loteCode || "—");
-        const when = escapeHtml(formatHistTime_(h.at));
-        const evalName = escapeHtml(h.evaluador || "—");
-        const cartilla = escapeHtml(h.cartillaLabel || "Proyecciones");
-        const nSamples = Number(h.sampleCount) || (Array.isArray(h.samples) ? h.samples.length : 0) || 0;
-        const samples = Array.isArray(h.samples) && h.samples.length
-          ? h.samples
-          : Array.from({ length: nSamples }, (_, i) => ({ n: i + 1 }));
-        const samplesHtml = samples
-          .map((s) => {
-            const n = escapeHtml(s.n != null ? s.n : "");
-            const bits = [
-              s.yema !== "" && s.yema != null ? `YP ${escapeHtml(s.yema)}` : "",
-              s.abierta !== "" && s.abierta != null ? `YA ${escapeHtml(s.abierta)}` : "",
-              s.e1 !== "" && s.e1 != null ? `E1 ${escapeHtml(s.e1)}` : "",
-              s.e5 !== "" && s.e5 != null ? `E5 ${escapeHtml(s.e5)}` : "",
-    ].filter(Boolean);
-            return `<div class="hist-sample">
-              <span class="hist-sample-n">Muestra ${n}</span>
-              <span class="hist-sample-meta">${bits.length ? bits.join(" · ") : "Sin detalle capturado"}</span>
-            </div>`;
-          })
-      .join("");
-        return `<details class="hist-card ${st}" data-idx="${idx}">
-          <summary class="hist-summary">
+    listEl.innerHTML = rows
+      .map((r, idx) => {
+        const st = r.status === "sent" ? "sent" : "pending";
+        const stLabel = st === "sent" ? "Enviado" : "Llenar";
+        const lote = escapeHtml(r.loteCode || "—");
+        const when = escapeHtml(formatHistTime_(r.at));
+        const nSamples = Number(history[idx] && history[idx].sampleCount) || 0;
+        const evalName = escapeHtml((history[idx] && history[idx].evaluador) || "—");
+        const cartilla = escapeHtml((history[idx] && history[idx].cartillaLabel) || "Proyecciones");
+        return `<article class="hist-card ${st}">
+          <div class="hist-summary">
             <div class="hist-card-top">
               <strong class="hist-lote">${lote}</strong>
               <span class="hist-badge">${stLabel}</span>
           </div>
             <p class="hist-line">${cartilla} · ${evalName}</p>
+            <p class="hist-line hist-meta-line">${escapeHtml(r.modulo)} · Turno ${escapeHtml(r.turno)} · ${escapeHtml(r.variedad)}</p>
+            <div class="hist-metrics">
+              <div><span>Area</span><strong>${r.area == null ? "—" : fmtNum_(r.area, 2)}</strong></div>
+              <div><span>Bayas E5</span><strong>${r.bayas == null ? "—" : fmtNum_(r.bayas, 0)}</strong></div>
+              <div><span>Peso</span><strong>${fmtNum_(r.peso, 2)} g</strong></div>
+              <div><span>kg/ha</span><strong>${r.kgHa == null ? "—" : fmtNum_(r.kgHa, 0)}</strong></div>
+              <div class="hist-metric-total">
+                <span>${r.kgTot != null ? "kg totales" : "kg/ha"}</span>
+                <strong>${
+                  r.kgTot != null
+                    ? fmtNum_(r.kgTot, 0)
+                    : r.kgHa == null
+                      ? "—"
+                      : fmtNum_(r.kgHa, 0)
+                }</strong>
+                ${
+                  r.kgTot != null
+                    ? `<em class="hist-metric-note">kg/ha ${fmtNum_(r.kgHa, 0)} · área ${fmtNum_(r.area, 2)}</em>`
+                    : r.kgHa != null
+                      ? `<em class="hist-metric-note">Sin área del lote · no hay kg totales</em>`
+                      : ""
+                }
+              </div>
+        </div>
             <div class="hist-summary-foot">
               <span class="hist-muestras">${nSamples} muestra${nSamples === 1 ? "" : "s"}</span>
               <span class="hist-time">${when}</span>
-        </div>
-          </summary>
-          <div class="hist-panel">
-            <p class="hist-panel-title">Detalle de muestras</p>
-            ${samplesHtml}
           </div>
-        </details>`;
+          </div>
+        </article>`;
       })
       .join("");
   }
 
+  /** Responde al soltar el dedo/mouse, sin esperar el click lento del navegador. */
+  function fastTap_(el, handler) {
+    if (!el) return;
+    el.__fastHandler = handler;
+    if (el.dataset.fastTap === "1") return;
+    el.dataset.fastTap = "1";
+    let armed = false;
+    let last = 0;
+    const clear = () => {
+      armed = false;
+      el.classList.remove("is-pressed");
+    };
+    const run = (e) => {
+      const now = Date.now();
+      if (now - last < 280) return;
+      last = now;
+      clear();
+      try {
+        if (typeof el.__fastHandler === "function") el.__fastHandler(e);
+      } catch (_) {}
+    };
+    el.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (e.isPrimary === false) return;
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        if (el.disabled || el.getAttribute("aria-disabled") === "true") return;
+        armed = true;
+        el.classList.add("is-pressed");
+      },
+      { passive: true }
+    );
+    el.addEventListener(
+      "pointerup",
+      (e) => {
+        if (!armed) return;
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        e.preventDefault();
+        run(e);
+      },
+      { passive: false }
+    );
+    el.addEventListener("pointercancel", clear, { passive: true });
+    el.addEventListener("lostpointercapture", clear, { passive: true });
+    el.addEventListener("click", (e) => {
+      if (Date.now() - last < 400) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      run(e);
+    });
+  }
+
   /* ——— Bind ——— */
   function bind() {
-    $("#btn-crear")?.addEventListener("click", openCreateModal);
-    $("#btn-create-cancel")?.addEventListener("click", closeCreateModal);
-    $("#create-modal-backdrop")?.addEventListener("click", closeCreateModal);
-    $("#btn-create-ok")?.addEventListener("click", confirmCreate);
-    $("#sel-evaluador")?.addEventListener("click", openEvaluadorSelect);
-    $("#sel-cartilla")?.addEventListener("click", openCartillaSelect);
-    $("#sel-modulo")?.addEventListener("click", openModuloSelect);
-    $("#sel-turno")?.addEventListener("click", openTurnoSelect);
-    $("#sel-lote")?.addEventListener("click", openLoteSelect);
+    fastTap_($("#btn-crear"), openCreateModal);
+    fastTap_($("#btn-create-cancel"), closeCreateModal);
+    $("#create-modal-backdrop")?.addEventListener("click", (e) => {
+      if (Date.now() - createOpenedAt_ < 450) return;
+      closeCreateModal();
+    });
+    fastTap_($("#btn-create-ok"), confirmCreate);
+    fastTap_($("#sel-campana"), openCampanaSelect);
+    fastTap_($("#fab-options-btn"), (e) => {
+      e.stopPropagation();
+      const menu = $("#fab-menu");
+      const btn = $("#fab-options-btn");
+      if (!menu || !btn) return;
+      const open = menu.hidden;
+      menu.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    fastTap_($("#fab-logout"), () => {
+      const menu = $("#fab-menu");
+      const btn = $("#fab-options-btn");
+      if (menu) menu.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+      logout_();
+    });
+    fastTap_($("#fab-update"), () => {
+      const menu = $("#fab-menu");
+      const btn = $("#fab-options-btn");
+      if (menu) menu.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+      updateApp();
+    });
+    fastTap_($("#fab-cache"), () => {
+      const menu = $("#fab-menu");
+      const btn = $("#fab-options-btn");
+      if (menu) menu.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+      clearAllLocal();
+    });
+    document.addEventListener("pointerup", (e) => {
+      const wrap = $("#fab-wrap");
+      const menu = $("#fab-menu");
+      const btn = $("#fab-options-btn");
+      if (!wrap || !menu || menu.hidden) return;
+      if (wrap.contains(e.target)) return;
+      menu.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    });
+    $("#qb-login-form")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      entrar_();
+    });
+    fastTap_($("#btn-login"), (e) => {
+      e.preventDefault();
+      entrar_();
+    });
+    $("#login-dni")?.addEventListener("input", (e) => {
+      e.target.value = String(e.target.value || "").replace(/\D/g, "").slice(0, 8);
+    });
+    $("#login-pass")?.addEventListener("input", (e) => {
+      e.target.value = String(e.target.value || "").replace(/\D/g, "").slice(0, 8);
+    });
+    fastTap_($("#sel-cartilla"), openCartillaSelect);
+    fastTap_($("#sel-modulo"), openModuloSelect);
+    fastTap_($("#sel-turno"), openTurnoSelect);
+    fastTap_($("#sel-lote"), openLoteSelect);
 
-    $("#btn-back-cartilla")?.addEventListener("click", leaveCartilla);
-    $("#btn-muestra-prev")?.addEventListener("click", () => switchMuestra(-1));
-    $("#btn-muestra-next")?.addEventListener("click", () => switchMuestra(1));
-    $("#btn-guardar")?.addEventListener("click", guardarCartilla);
+    fastTap_($("#btn-back-cartilla"), leaveCartilla);
+    fastTap_($("#btn-muestra-prev"), () => switchMuestra(-1));
+    fastTap_($("#btn-muestra-next"), () => switchMuestra(1));
+    fastTap_($("#btn-ir-resumen"), irResumen_);
+    // Click directo: más fiable en la barra fija del resumen
+    const bindResumenBtn_ = (el, fn) => {
+      if (!el) return;
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fn(e);
+      });
+    };
+    bindResumenBtn_($("#btn-back-resumen"), volverEditarResumen_);
+    bindResumenBtn_($("#btn-editar-resumen"), volverEditarResumen_);
+    bindResumenBtn_($("#btn-guardar"), () => {
+      guardarCartilla();
+    });
 
-    $("#btn-historial")?.addEventListener("click", openHistorial);
-    $("#btn-back-historial")?.addEventListener("click", () => {
+    fastTap_($("#btn-historial"), openHistorial);
+    fastTap_($("#btn-back-historial"), () => {
       showScreen("home");
       renderHomeList();
     });
-    $("#btn-sync-info")?.addEventListener("click", openSyncModal);
-    $("#btn-cartilla-menu")?.addEventListener("click", openSyncModal);
-    $("#qb-sync-close")?.addEventListener("click", closeSyncModal);
-    $("#qb-sync-done")?.addEventListener("click", closeSyncModal);
-    $("#qb-sync-clear")?.addEventListener("click", clearAllLocal);
-    $("#qb-sync-update")?.addEventListener("click", updateApp);
-    $("#qb-sync-transfer")?.addEventListener("click", runTransferMode);
-    $("#qb-transfer-done")?.addEventListener("click", () => {
+    fastTap_($("#btn-sync-info"), openSyncModal);
+    fastTap_($("#qb-sync-close"), closeSyncModal);
+    fastTap_($("#qb-sync-done"), closeSyncModal);
+    fastTap_($("#qb-sync-clear"), clearAllLocal);
+    fastTap_($("#qb-sync-update"), updateApp);
+    fastTap_($("#qb-sync-transfer"), runTransferMode);
+    fastTap_($("#qb-transfer-done"), () => {
       const root = $("#qb-transfer");
       if (root) root.hidden = true;
     });
 
-    $("#chip-pending")?.addEventListener("click", () => {
+    const flushPending_ = () => {
       if (QB.API.pendingCount() > 0) QB.API.flushQueue({ includeOld: true });
       else toast("No hay pendientes", "info");
-    });
+    };
+    $$("#chip-pending, [data-chip-pending]").forEach((chip) => fastTap_(chip, flushPending_));
 
     window.addEventListener("online", () => {
       updateOnlineUi();
@@ -1410,10 +2136,26 @@ QB.App = (() => {
       if (state.screen === "historial") renderHistorial();
       if (state.screen === "home") renderHomeList();
     });
-    window.addEventListener("qb:sync", () => {
+    window.addEventListener("qb:sync", (ev) => {
       updatePendingUi();
       if (state.screen === "historial") renderHistorial();
       if (state.screen === "home") renderHomeList();
+      const d = (ev && ev.detail) || {};
+      if (d.phase === "done" && Number(d.sent) > 0) {
+        const n = Number(d.sent) || 0;
+        const remain = Number(d.remain) || 0;
+        const msg = remain
+          ? `${n} subido${n === 1 ? "" : "s"} · ${remain} pendiente${remain === 1 ? "" : "s"}`
+          : `${n} registro${n === 1 ? "" : "s"} subido${n === 1 ? "" : "s"} a la nube`;
+        toast(msg, "ok");
+        notifyPhone_("Proyecciones · Enviado", msg, "qb-proy-sent");
+      } else if (d.phase === "done" && d.stale && Number(d.sent) > 0) {
+        notifyPhone_(
+          "Proyecciones · Parcial",
+          `${d.sent} enviados · revisa pendientes`,
+          "qb-proy-partial"
+        );
+      }
     });
 
     document.addEventListener("visibilitychange", () => {
@@ -1428,12 +2170,21 @@ QB.App = (() => {
       }
     });
 
-    window.addEventListener("pageshow", (ev) => {
-      if (ev.persisted) {
-        updateOnlineUi();
-        updatePendingUi();
-        renderHomeList();
-      }
+    window.addEventListener("pageshow", () => {
+      const s = requireSession_({ show: true });
+      if (!s) return;
+      hideLogin_();
+      updateOnlineUi();
+      updatePendingUi();
+      renderHomeList();
+      revisarAccesoDni_(s.dni, { clear: true });
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) return;
+      const s = requireSession_({ show: true });
+      if (!s) return;
+      hideLogin_();
+      revisarAccesoDni_(s.dni, { clear: true });
     });
   }
 
@@ -1443,14 +2194,29 @@ QB.App = (() => {
     bindKeyboardBar_();
     setupInstall();
     updateOnlineUi();
+
+    const session = requireSession_({ show: true });
+    if (!session) {
+      showScreen("home");
+      return;
+    }
+
+    applySession_(session);
+    hideLogin_();
     showScreen("home");
+    ensureNotifyPermission_().catch(() => {});
 
     try {
       await QB.Data.ensureCatalogs();
-        } catch (_) {}
-      try {
+    } catch (_) {}
+    try {
       if (QB.API.whenReady) await QB.API.whenReady();
-      } catch (_) {}
+    } catch (_) {}
+
+    if (!readSession_()) {
+      showLogin_("");
+      return;
+    }
 
     updatePendingUi();
     renderHomeList();
@@ -1458,6 +2224,7 @@ QB.App = (() => {
     if (navigator.onLine && QB.API.shouldAutoSync && QB.API.shouldAutoSync()) {
       QB.API.flushQueue({ includeOld: true });
     }
+    revisarAccesoDni_(session.dni, { clear: true });
   }
 
   if (document.readyState === "loading") {
