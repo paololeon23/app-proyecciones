@@ -6,23 +6,26 @@ QB.CONFIG = {
   _ep: "",
   API_URL: "https://script.google.com/macros/s/AKfycbxxLAKdchGStfg2IIkaeJKgDdsRgTf9-s-jg3cYz6k2dgZcaJj-54CFLgwPled2fr24/exec",
   APP_NAME: "Q Berries · Proyecciones",
-  VERSION: "1.5.9",
+  VERSION: "1.6.5",
   PUBLIC_URL: "https://app-proyecciones.netlify.app",
   /** Muestras iniciales al crear cartilla (se pueden agregar más en campo) */
   SAMPLE_START: 1,
   SAMPLE_MAX: 40,
   /** Campaña activa por defecto en el modal CREAR */
-  CAMPANA_DEFAULT: "2026 - II",
+  CAMPANA_DEFAULT: "2026",
   /** Historial / proyección: peso baya (g) y densidad plantas/ha */
   PESO_BAYA_G: 2.6,
   DENSIDAD_PLANTAS_HA: 6500,
+  /** Foto referencia: JPEG objetivo ~280 KB */
+  PHOTO_MAX_EDGE: 1280,
+  PHOTO_QUALITY: 0.72,
+  PHOTO_TARGET_KB: 320,
 };
 
 /** Campañas disponibles (selector arriba a la derecha del modal) */
 QB.CAMPANAS = [
-  { id: "2026 - II", label: "2026 - II" },
-  { id: "2026 - I", label: "2026 - I" },
-  { id: "2025 - II", label: "2025 - II" },
+  { id: "2026", label: "2026" },
+  { id: "2025", label: "2025" },
 ];
 
 /** Cartillas disponibles en el modal CREAR */
@@ -48,6 +51,18 @@ QB.SAMPLE_FIELDS = [
   { id: "e5", label: "E5 (Maduro)", sheet: "E5 (Maduro)" },
 ];
 
+/** Columnas de tabla resumen KG (historial) */
+QB.HIST_KG_STAGES = [
+  { id: "boton_floral", sheet: "Botón Floral", label: "1) Flor cerrada" },
+  { id: "flor", sheet: "Flor", label: "2) Flor abierta" },
+  { id: "cuaja", sheet: "Cuaja", label: "3) Cuajo" },
+  { id: "e1", sheet: "E1 (Verde)", label: "4) E1" },
+  { id: "e2", sheet: "E2 (Rosado)", label: "5) E2" },
+  { id: "e3", sheet: "E3 (Guinda)", label: "6) E3" },
+  { id: "e4", sheet: "E4 (50%-70%)", label: "7) E4" },
+  { id: "e5", sheet: "E5 (Maduro)", label: "8) E5" },
+];
+
 QB.SHEET_HEADERS = [
   "Lote",
   "Fecha",
@@ -68,7 +83,6 @@ QB.SHEET_HEADERS = [
   "E4 (50%-70%)",
   "E5 (Maduro)",
   "Observación",
-  "Foto cabecera",
   "Modulo",
   "Turno",
   "Lotes",
@@ -77,4 +91,6 @@ QB.SHEET_HEADERS = [
   "Variedad",
   "Area",
   "Campaña",
+  "Anexo",
+  "Hora subida",
 ];

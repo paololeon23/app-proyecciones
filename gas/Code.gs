@@ -10,9 +10,10 @@
  *
  * SETUP:
  * 1) Sheet destino → Extensiones → Apps Script → pega este archivo
- * 2) Ejecuta UNA vez: setupSheets()
- * 3) Implementar → Nueva implementación → Web App (Yo + Cualquier persona)
- * 4) URL …/exec → js/config.js → API_URL o _ep (base64)
+ * 2) Ejecuta UNA vez: setupSheets()  (crea columnas Anexo + Hora subida)
+ * 3) La 1ª foto crea la carpeta Drive "QBerries-Proyecciones-Fotos"
+ * 4) Implementar → Nueva implementación → Web App (Yo + Cualquier persona)
+ * 5) URL …/exec → js/config.js → API_URL o _ep (base64)
  */
 
 var SHEET_EVAL = 'Evaluadores';
@@ -41,7 +42,6 @@ var HEADERS = [
   'E4 (50%-70%)',
   'E5 (Maduro)',
   'Observación',
-  'Foto cabecera',
   'Modulo',
   'Turno',
   'Lotes',
@@ -49,10 +49,14 @@ var HEADERS = [
   'Etapa',
   'Variedad',
   'Area',
-  'Campaña'
+  'Campaña',
+  'Anexo',
+  'Hora subida'
 ];
 
 var CACHE_TTL_SEC = 86400; // 24 h anti-duplicado en reintentos 3G/H+
+var DRIVE_ROOT_NAME = 'QBerries-Proyecciones-Fotos';
+var PROP_DRIVE_ROOT = 'qb_proy_drive_root_id';
 
 /** Columnas que cuentan como “muestra con datos” */
 var SAMPLE_DATA_HEADERS = [
@@ -173,6 +177,9 @@ function doPost(e) {
     if (action === 'setAcceso' || action === 'setActivo') {
       return json_(setAcceso_(body));
     }
+    if (action === 'uploadPhoto' || action === 'foto') {
+      return json_(uploadPhotoOnly_(body));
+    }
 
     if (!String(body.clientId || '').trim()) {
       return json_({ ok: false, error: 'Falta clientId: no se guarda nada' });
@@ -244,6 +251,8 @@ function appendCartilla_(ss, body) {
   var matrix = buildMatrix_(body);
   if (!matrix.length) throw new Error('Sin filas de muestras');
 
+  attachPhotosToMatrix_(body, matrix);
+
   var startRow = Math.max(sheet.getLastRow() + 1, 2);
   // getRange(fila, col, CANTIDAD de filas, CANTIDAD de columnas)
   sheet.getRange(startRow, 2, matrix.length, 1).setNumberFormat('@');
@@ -260,6 +269,141 @@ function appendCartilla_(ss, body) {
     clientId: clientId,
     fecha: matrix[0][1]
   };
+}
+
+/** Carpeta raíz en Drive (se crea una vez y se guarda el id). */
+function driveRootFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty(PROP_DRIVE_ROOT);
+  if (id) {
+    try {
+      return DriveApp.getFolderById(id);
+    } catch (_) {}
+  }
+  var root = DriveApp.createFolder(DRIVE_ROOT_NAME);
+  props.setProperty(PROP_DRIVE_ROOT, root.getId());
+  return root;
+}
+
+function ensureChildFolder_(parent, name) {
+  var safe = String(name || 'sin-nombre').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'sin-nombre';
+  var it = parent.getFoldersByName(safe);
+  if (it.hasNext()) return it.next();
+  return parent.createFolder(safe);
+}
+
+function limaStamp_() {
+  return Utilities.formatDate(new Date(), 'America/Lima', 'yyyy-MM-dd HH:mm:ss');
+}
+
+function limaFileStamp_() {
+  return Utilities.formatDate(new Date(), 'America/Lima', 'yyyy-MM-dd_HHmmss');
+}
+
+/**
+ * Guarda JPEG en Drive:
+ * QBerries-Proyecciones-Fotos / {fecha} / {DNI-Nombre} / M{n}_{stamp}.jpg
+ * Devuelve { url, id, hora }
+ */
+function savePhotoToDrive_(meta, base64, mime) {
+  meta = meta || {};
+  var data = String(base64 || '').replace(/^data:image\/\w+;base64,/, '');
+  if (!data) return null;
+  var blob;
+  try {
+    blob = Utilities.newBlob(Utilities.base64Decode(data), mime || 'image/jpeg', 'foto.jpg');
+  } catch (err) {
+    throw new Error('Foto inválida: ' + String(err && err.message ? err.message : err));
+  }
+  var fecha = String(meta.fecha || Utilities.formatDate(new Date(), 'America/Lima', 'yyyy-MM-dd'));
+  var dni = String(meta.dni || '').replace(/\D/g, '') || 'sin-dni';
+  var nombre = String(meta.nombre || 'evaluador').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'evaluador';
+  var evalFolder = (dni + '-' + nombre).slice(0, 80);
+  var n = Number(meta.n) || 1;
+  var stamp = limaFileStamp_();
+  var fileName = 'M' + String(n).padStart(2, '0') + '_' + stamp + '.jpg';
+
+  var root = driveRootFolder_();
+  var fFecha = ensureChildFolder_(root, fecha);
+  var fEval = ensureChildFolder_(fFecha, evalFolder);
+  // Reemplazo: borra foto previa de la misma muestra si se indica
+  if (meta.replaceId) {
+    try {
+      DriveApp.getFileById(String(meta.replaceId)).setTrashed(true);
+    } catch (_) {}
+  }
+  var file = fEval.createFile(blob.setName(fileName));
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (_) {}
+  return {
+    id: file.getId(),
+    url: 'https://drive.google.com/file/d/' + file.getId() + '/view',
+    hora: limaStamp_(),
+    name: fileName
+  };
+}
+
+function photosIndex_(body) {
+  var map = {};
+  var list = Array.isArray(body && body.photos) ? body.photos : [];
+  for (var i = 0; i < list.length; i++) {
+    var p = list[i];
+    if (!p || !p.data) continue;
+    var n = Number(p.n);
+    if (!n || n < 1) continue;
+    // Una foto por N° Muestra: no mezclar entre filas
+    if (!map[n]) map[n] = p;
+  }
+  return map;
+}
+
+function attachPhotosToMatrix_(body, matrix) {
+  var data = (body && body.data) || {};
+  var byN = photosIndex_(body);
+  var idxAnexo = HEADERS.indexOf('Anexo');
+  var idxHora = HEADERS.indexOf('Hora subida');
+  var idxN = HEADERS.indexOf('N° Muestra');
+  var idxDni = HEADERS.indexOf('DNI');
+  var idxNom = HEADERS.indexOf('Nombre');
+  var idxFecha = HEADERS.indexOf('Fecha');
+  if (idxAnexo < 0 || idxHora < 0) return;
+
+  for (var r = 0; r < matrix.length; r++) {
+    var n = idxN >= 0 ? Number(matrix[r][idxN]) || (r + 1) : (r + 1);
+    var photo = byN[n];
+    if (!photo || !photo.data) continue;
+    // Adjunta SOLO a esta fila (mismo N° Muestra)
+    var saved = savePhotoToDrive_({
+      fecha: idxFecha >= 0 ? matrix[r][idxFecha] : data.fecha,
+      dni: idxDni >= 0 ? matrix[r][idxDni] : data.evaluadorId,
+      nombre: idxNom >= 0 ? matrix[r][idxNom] : data.nombre,
+      n: n,
+      replaceId: photo.replaceId || ''
+    }, photo.data, photo.mime || 'image/jpeg');
+    if (!saved) continue;
+    matrix[r][idxAnexo] = saved.url;
+    matrix[r][idxHora] = saved.hora;
+    // Consumir para no reutilizar en otra fila
+    delete byN[n];
+  }
+}
+
+function uploadPhotoOnly_(body) {
+  body = body || {};
+  if (!body.data && !body.photo) {
+    return { ok: false, error: 'Falta foto' };
+  }
+  var photo = body.photo || body;
+  if (!photo.data) return { ok: false, error: 'Falta data de foto' };
+  var saved = savePhotoToDrive_({
+    fecha: body.fecha || (body.data && body.data.fecha) || '',
+    dni: body.dni || (body.data && body.data.evaluadorId) || '',
+    nombre: body.nombre || (body.data && body.data.nombre) || '',
+    n: body.n || photo.n || 1,
+    replaceId: photo.replaceId || body.replaceId || ''
+  }, photo.data, photo.mime || 'image/jpeg');
+  return { ok: true, photo: saved };
 }
 
 function toSheetValue_(header, value) {
@@ -305,8 +449,8 @@ function buildMatrix_(body) {
     // N° Muestra siempre automático: 1, 2, 3… según las evaluaciones de esta cartilla
     map['N° Muestra'] = i + 1;
     if (!map.Observación && data.observacion) map.Observación = data.observacion;
-    if (map['Foto cabecera'] == null) map['Foto cabecera'] = '';
     if (!map.Modulo) map.Modulo = data.modulo || '';
+    delete map['Foto cabecera'];
     if (map.Turno == null || map.Turno === '') map.Turno = data.turno || '';
     if (map.Lotes == null || map.Lotes === '') map.Lotes = data.loteNum || data.lotes || '';
     if (map.Semana == null || map.Semana === '') map.Semana = data.semana || isoWeek_(map.Fecha);
@@ -314,6 +458,18 @@ function buildMatrix_(body) {
     if (!map.Variedad) map.Variedad = data.variedad || '';
     if (map.Area == null || map.Area === '') map.Area = data.area != null ? data.area : '';
     if (!map['Campaña']) map['Campaña'] = data.campana || data.campaña || '';
+    // Solo año en celda: "2026 - II" / "2026-II" → "2026"
+    (function () {
+      var raw = String(map['Campaña'] || '').trim();
+      var m = raw.match(/(20\d{2})/);
+      map['Campaña'] = m ? m[1] : raw;
+    })();
+    if (map.Anexo == null) map.Anexo = map.Anexo || '';
+    if (map['Hora subida'] == null) map['Hora subida'] = '';
+    // No escribir base64 en Sheets
+    delete map.photoBase64;
+    delete map._photo;
+    delete map.photoDataUrl;
 
     var row = [];
     for (var c = 0; c < HEADERS.length; c++) {

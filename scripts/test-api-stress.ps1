@@ -45,7 +45,6 @@ function New-SampleRow($n, $e5) {
     'E4 (50%-70%)' = 0
     'E5 (Maduro)' = $e5
     'Observación' = "API-TEST $stamp m$n"
-    'Foto cabecera' = ''
     'Modulo' = 'M1'
     'Turno' = 3
     'Lotes' = 12

@@ -28,13 +28,27 @@ QB.App = (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+  function newSampleId_() {
+    try {
+      if (crypto?.randomUUID) return crypto.randomUUID();
+    } catch (_) {}
+    return `s_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  }
+
   function emptySample_() {
-    const o = { observacion: "" };
+    const o = {
+      sampleId: newSampleId_(),
+      observacion: "",
+      photoDataUrl: "",
+      photoTakenAt: "",
+    };
     (QB.SAMPLE_FIELDS || []).forEach((f) => {
       o[f.id] = "";
     });
     return o;
   }
+
+  const PESO_PREF_KEY = "qb_proy_peso_baya";
 
   function ensureSamples_(cartilla) {
     if (!cartilla) return [];
@@ -48,7 +62,10 @@ QB.App = (() => {
         cartilla.samples[i] = emptySample_();
         return;
       }
+      if (!s.sampleId) s.sampleId = newSampleId_();
       if (s.observacion == null) s.observacion = "";
+      if (s.photoDataUrl == null) s.photoDataUrl = "";
+      if (s.photoTakenAt == null) s.photoTakenAt = "";
       if (!String(s.observacion).trim() && legacy && i === 0) {
         s.observacion = legacy;
       }
@@ -100,7 +117,7 @@ QB.App = (() => {
       etapa: "",
       variedad: "",
       area: "",
-      campana: (QB.CONFIG && QB.CONFIG.CAMPANA_DEFAULT) || "2026 - II",
+      campana: (QB.CONFIG && QB.CONFIG.CAMPANA_DEFAULT) || "2026",
       observacion: "",
       samples,
       ...(partial || {}),
@@ -108,7 +125,19 @@ QB.App = (() => {
   }
 
   function defaultCampana_() {
-    return (QB.CONFIG && QB.CONFIG.CAMPANA_DEFAULT) || "2026 - II";
+    return (QB.CONFIG && QB.CONFIG.CAMPANA_DEFAULT) || "2026";
+  }
+
+  function normalizeCampana_(v) {
+    const s = String(v || "")
+      .trim()
+      .replace(/\s*[–—-]\s*[IVX]+$/i, "")
+      .replace(/\s+II$/i, "")
+      .replace(/\s+I$/i, "")
+      .trim();
+    if (!s) return defaultCampana_();
+    const m = s.match(/(20\d{2})/);
+    return m ? m[1] : defaultCampana_();
   }
 
   function campanaOptions_(query) {
@@ -130,7 +159,7 @@ QB.App = (() => {
 
   function setCampanaLabel_(value) {
     const el = $("#sel-campana-label");
-    if (el) el.textContent = value || defaultCampana_();
+    if (el) el.textContent = normalizeCampana_(value || defaultCampana_());
   }
 
   function todayISO_() {
@@ -463,11 +492,44 @@ QB.App = (() => {
     document.body.classList.toggle("qb-locked", !on);
   }
 
+  function setLoginStep_(step) {
+    const form = $("#qb-login-form");
+    const dniField = $("#login-field-dni");
+    const passField = $("#login-field-pass");
+    const nextBtn = $("#btn-login-next");
+    const loginBtn = $("#btn-login");
+    const backBtn = $("#btn-login-back");
+    const lead = $("#login-lead");
+    const n = step === 2 ? 2 : 1;
+    if (form) form.dataset.loginStep = String(n);
+    if (dniField) dniField.hidden = n !== 1;
+    if (passField) passField.hidden = n !== 2;
+    if (nextBtn) nextBtn.hidden = n !== 1;
+    if (loginBtn) loginBtn.hidden = n !== 2;
+    if (backBtn) backBtn.hidden = n !== 2;
+    if (lead) {
+      lead.textContent =
+        n === 1 ? "Paso 1 de 2 · Ingresa tu DNI" : "Paso 2 de 2 · Ingresa tu contraseña";
+    }
+    $$("[data-step-dot]").forEach((dot) => {
+      dot.classList.toggle("is-on", Number(dot.getAttribute("data-step-dot")) <= n);
+    });
+  }
+
+  function setLoginLoading_(on) {
+    const form = $("#qb-login-form");
+    const loading = $("#login-loading");
+    if (form) form.classList.toggle("is-loading", !!on);
+    if (loading) loading.hidden = !on;
+  }
+
   function showLogin_(message) {
     setAuthUi_(false);
     const gate = $("#qb-login");
     const err = $("#login-error");
     if (gate) gate.hidden = false;
+    setLoginLoading_(false);
+    setLoginStep_(1);
     if (err) {
       err.hidden = !message;
       err.textContent = message || "";
@@ -518,12 +580,10 @@ QB.App = (() => {
     showLogin_(message || "");
   }
 
-  async function entrar_() {
+  function loginNextStep_() {
     const dniEl = $("#login-dni");
-    const passEl = $("#login-pass");
-    const dni = String(dniEl && dniEl.value || "").replace(/\D/g, "");
-    const pass = String(passEl && passEl.value || "").replace(/\D/g, "");
     const err = $("#login-error");
+    const dni = String((dniEl && dniEl.value) || "").replace(/\D/g, "");
     const say = (msg) => {
       if (!err) return;
       err.hidden = !msg;
@@ -531,22 +591,59 @@ QB.App = (() => {
     };
     if (!/^\d{8}$/.test(dni)) {
       say("El DNI debe tener 8 dígitos.");
+      dniEl && dniEl.focus();
+      return;
+    }
+    if (dniEl) dniEl.value = dni;
+    say("");
+    setLoginStep_(2);
+    setTimeout(() => $("#login-pass")?.focus(), 60);
+  }
+
+  async function entrar_() {
+    const form = $("#qb-login-form");
+    const step = Number(form && form.dataset.loginStep) || 1;
+    if (step < 2) {
+      loginNextStep_();
+      return;
+    }
+    const dniEl = $("#login-dni");
+    const passEl = $("#login-pass");
+    const dni = String((dniEl && dniEl.value) || "").replace(/\D/g, "");
+    const pass = String((passEl && passEl.value) || "").replace(/\D/g, "");
+    const err = $("#login-error");
+    const say = (msg) => {
+      if (!err) return;
+      err.hidden = !msg;
+      err.textContent = msg || "";
+    };
+    if (!/^\d{8}$/.test(dni)) {
+      setLoginStep_(1);
+      say("El DNI debe tener 8 dígitos.");
       return;
     }
     if (pass !== dni) {
-      say("La contraseña es tu mismo DNI.");
+      say("Contraseña incorrecta.");
       return;
     }
     const btn = $("#btn-login");
     if (btn) btn.disabled = true;
     say("");
-    const res = await QB.API.checkAcceso(dni);
+    setLoginLoading_(true);
+    let res = null;
+    try {
+      res = await QB.API.checkAcceso(dni);
+    } catch (_) {
+      res = null;
+    }
     if (btn) btn.disabled = false;
     if (!res || res.offline || res.activo == null) {
+      setLoginLoading_(false);
       say("Sin señal. Entra cuando tengas internet.");
       return;
     }
     if (res.activo !== true) {
+      setLoginLoading_(false);
       say("Sin acceso. Este DNI está desactivado.");
       return;
     }
@@ -554,6 +651,7 @@ QB.App = (() => {
     writeSession_(session);
     applySession_(session);
     if (passEl) passEl.value = "";
+    setLoginLoading_(false);
     hideLogin_();
     showScreen("home");
     updateOnlineUi();
@@ -599,7 +697,7 @@ QB.App = (() => {
       label: "Proyecciones",
     };
     const session = readSession_();
-    const campana = prefs.campana || defaultCampana_();
+    const campana = normalizeCampana_(prefs.campana || defaultCampana_());
     // Tras guardar, módulo/turno/lote quedan vacíos para elegir de nuevo
     state.create = {
       evaluadorId: (session && session.dni) || "",
@@ -685,7 +783,7 @@ QB.App = (() => {
       value: state.create.campana || defaultCampana_(),
       getOptions: (q) => campanaOptions_(q),
       onSelect: (opt) => {
-        state.create.campana = opt.id || opt.label;
+        state.create.campana = normalizeCampana_(opt.id || opt.label);
         setCampanaLabel_(state.create.campana);
       },
     });
@@ -812,7 +910,7 @@ QB.App = (() => {
       return;
     }
     const meta = c.loteMeta || QB.Data.loteMeta(c.loteId);
-    const campana = c.campana || defaultCampana_();
+    const campana = normalizeCampana_(c.campana || defaultCampana_());
     writePrefs_({
       evaluadorId: c.evaluadorId,
       evaluadorNombre: c.evaluadorNombre,
@@ -997,9 +1095,29 @@ QB.App = (() => {
       })
       .join("");
 
+    const hasPhoto = !!sample.photoDataUrl;
     root.innerHTML =
       fieldsHtml +
-      `<label class="cartilla-obs">
+      `<div class="cartilla-photo" id="cartilla-photo">
+        <span class="cartilla-photo-label">Foto de referencia · 1 por muestra</span>
+        <img class="cartilla-photo-preview${hasPhoto ? " has-photo" : ""}" id="cartilla-photo-preview" alt="Vista previa" ${
+          hasPhoto ? `src="${sample.photoDataUrl}"` : ""
+        } />
+        <p class="cartilla-photo-meta" id="cartilla-photo-meta">${
+          hasPhoto
+            ? `Lista · ${escapeHtml(sample.photoTakenAt || "con fecha/hora")}`
+            : "Abre la cámara · se marca fecha y hora en la imagen"
+        }</p>
+        <div class="cartilla-photo-actions">
+          <button type="button" class="cartilla-photo-btn primary" id="btn-photo-take">${
+            hasPhoto ? "Reemplazar foto" : "Tomar foto"
+          }</button>
+          <button type="button" class="cartilla-photo-btn" id="btn-photo-clear" ${
+            hasPhoto ? "" : "hidden"
+          }>Quitar</button>
+        </div>
+      </div>
+      <label class="cartilla-obs">
         <span>Observación</span>
         <textarea id="cartilla-obs" rows="3" placeholder="Opcional · solo esta muestra">${escapeHtml(
           sample.observacion || ""
@@ -1016,7 +1134,6 @@ QB.App = (() => {
         state.cartilla.samples[state.muestraIndex][id] = inp.value;
         saveDraft_();
       });
-      // Enter / siguiente: saltar sin soltar el teclado
       inp.addEventListener("keydown", (e) => {
         if (e.key !== "Enter") return;
         e.preventDefault();
@@ -1034,6 +1151,222 @@ QB.App = (() => {
         saveDraft_();
       });
     }
+    bindPhotoUi_();
+  }
+
+  function ensureSampleObj_() {
+    if (!state.cartilla) return null;
+    if (!state.cartilla.samples[state.muestraIndex]) {
+      state.cartilla.samples[state.muestraIndex] = emptySample_();
+    }
+    return state.cartilla.samples[state.muestraIndex];
+  }
+
+  function limaStampText_() {
+    try {
+      return new Intl.DateTimeFormat("es-PE", {
+        timeZone: "America/Lima",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).format(new Date());
+    } catch {
+      return new Date().toLocaleString("es-PE");
+    }
+  }
+
+  function stampAndCompressCanvas_(srcCanvas) {
+    const maxEdge = Number(QB.CONFIG && QB.CONFIG.PHOTO_MAX_EDGE) || 1280;
+    const quality0 = Number(QB.CONFIG && QB.CONFIG.PHOTO_QUALITY) || 0.72;
+    const targetKb = Number(QB.CONFIG && QB.CONFIG.PHOTO_TARGET_KB) || 320;
+    let w = srcCanvas.width;
+    let h = srcCanvas.height;
+    const scale = Math.min(1, maxEdge / Math.max(w, h, 1));
+    w = Math.max(1, Math.round(w * scale));
+    h = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas");
+    ctx.drawImage(srcCanvas, 0, 0, w, h);
+    const stamp = limaStampText_();
+    const pad = Math.max(10, Math.round(w * 0.02));
+    const fontSize = Math.max(16, Math.round(w * 0.035));
+    ctx.font = `700 ${fontSize}px system-ui, sans-serif`;
+    ctx.textBaseline = "bottom";
+    const tw = ctx.measureText(stamp).width;
+    const boxH = fontSize + pad;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(pad - 6, h - boxH - pad + 6, tw + 16, boxH);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(stamp, pad, h - pad);
+    let q = quality0;
+    let dataUrl = canvas.toDataURL("image/jpeg", q);
+    while (dataUrl.length * 0.75 > targetKb * 1024 && q > 0.45) {
+      q -= 0.08;
+      dataUrl = canvas.toDataURL("image/jpeg", q);
+    }
+    return { dataUrl, stamp };
+  }
+
+  function compressPhotoWithStamp_(fileOrBlob) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(fileOrBlob);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        try {
+          resolve(stampAndCompressCanvas_(canvas));
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("No se pudo leer la foto"));
+      };
+      img.src = url;
+    });
+  }
+
+  let cameraStream_ = null;
+
+  function stopCamera_() {
+    if (cameraStream_) {
+      try {
+        cameraStream_.getTracks().forEach((t) => t.stop());
+      } catch (_) {}
+      cameraStream_ = null;
+    }
+    const video = $("#qb-camera-video");
+    if (video) {
+      try {
+        video.srcObject = null;
+      } catch (_) {}
+    }
+    const root = $("#qb-camera");
+    if (root) {
+      root.classList.remove("open");
+      root.hidden = true;
+    }
+  }
+
+  async function openCamera_() {
+    const root = $("#qb-camera");
+    const video = $("#qb-camera-video");
+    if (!root || !video) {
+      toast("Cámara no disponible", "error");
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast("Este celular no permite cámara en la app", "warn");
+      return;
+    }
+    stopCamera_();
+    setLoader(true, "Abriendo cámara…");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
+      cameraStream_ = stream;
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      root.hidden = false;
+      requestAnimationFrame(() => root.classList.add("open"));
+    } catch (err) {
+      toast("Permite el acceso a la cámara para tomar la foto", "warn");
+    } finally {
+      setLoader(false);
+    }
+  }
+
+  async function captureCameraShot_() {
+    const video = $("#qb-camera-video");
+    const canvas = $("#qb-camera-canvas");
+    if (!video || !canvas || !cameraStream_) {
+      toast("Cámara no lista", "warn");
+      return;
+    }
+    const w = video.videoWidth || 1280;
+    const h = video.videoHeight || 720;
+    if (!w || !h) {
+      toast("Espera un segundo y vuelve a disparar", "warn");
+      return;
+    }
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, w, h);
+    setLoader(true, "Procesando foto…");
+    try {
+      const { dataUrl, stamp } = stampAndCompressCanvas_(canvas);
+      const s = ensureSampleObj_();
+      if (!s) return;
+      // Solo esta muestra (índice actual). No se copia a otras.
+      s.photoDataUrl = dataUrl;
+      s.photoTakenAt = stamp;
+      if (!s.sampleId) s.sampleId = newSampleId_();
+      saveDraft_();
+      stopCamera_();
+      renderCartilla();
+      toast(`Foto en muestra ${state.muestraIndex + 1} · con fecha y hora`, "ok");
+    } catch (_) {
+      toast("No se pudo guardar la foto", "error");
+    } finally {
+      setLoader(false);
+    }
+  }
+
+  function bindPhotoUi_() {
+    const takeBtn = $("#btn-photo-take");
+    const clearBtn = $("#btn-photo-clear");
+    if (takeBtn) {
+      takeBtn.onclick = (e) => {
+        e.preventDefault();
+        openCamera_();
+      };
+    }
+    if (clearBtn) {
+      clearBtn.onclick = (e) => {
+        e.preventDefault();
+        const s = ensureSampleObj_();
+        if (!s) return;
+        s.photoDataUrl = "";
+        s.photoTakenAt = "";
+        saveDraft_();
+        renderCartilla();
+      };
+    }
+  }
+
+  function bindCameraSheet_() {
+    if (bindCameraSheet_._done) return;
+    bindCameraSheet_._done = true;
+    fastTap_($("#qb-camera-close"), () => stopCamera_());
+    fastTap_($("#qb-camera-shot"), () => captureCameraShot_());
+    $("#qb-camera")?.addEventListener("click", (e) => {
+      if (e.target && e.target.id === "qb-camera") stopCamera_();
+    });
   }
 
   /**
@@ -1192,22 +1525,24 @@ QB.App = (() => {
     saveDraft_();
   }
 
-  function buildRowsForSave_(cartilla) {
+  /** Foto solo de ESA muestra (mismo orden / N° que rows). Nunca se comparte entre muestras. */
+  function buildRowsAndPhotosForSave_(cartilla) {
     const semana = isoWeek_(cartilla.fecha);
     const nombre = String(cartilla.evaluadorNombre || "").trim();
     const dni = String(cartilla.evaluadorId || "").replace(/\D/g, "");
     const samples = ensureSamples_(cartilla).filter(sampleHasData_);
     const rows = [];
+    const photos = [];
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i] || emptySample_();
+      const n = i + 1;
       const row = {
         Lote: cartilla.loteCode || "",
         Fecha: cartilla.fecha || todayISO_(),
         DNI: dni,
         Nombre: nombre,
-        "N° Muestra": i + 1,
+        "N° Muestra": n,
         Observación: s.observacion || "",
-        "Foto cabecera": "",
         Modulo: cartilla.modulo || "",
         Turno: cartilla.turno || "",
         Lotes: cartilla.loteNum || "",
@@ -1215,15 +1550,31 @@ QB.App = (() => {
         Etapa: cartilla.etapa || "",
         Variedad: cartilla.variedad || "",
         Area: cartilla.area || "",
-        Campaña: cartilla.campana || defaultCampana_(),
+        Campaña: normalizeCampana_(cartilla.campana || defaultCampana_()),
+        Anexo: "",
+        "Hora subida": "",
       };
       (QB.SAMPLE_FIELDS || []).forEach((f) => {
         const v = s[f.id];
         row[f.sheet] = v === "" || v == null ? "" : v;
       });
       rows.push(row);
+
+      const raw = String(s.photoDataUrl || "");
+      if (raw) {
+        const data = raw.replace(/^data:image\/\w+;base64,/, "");
+        if (data) {
+          photos.push({
+            n,
+            sampleId: s.sampleId || "",
+            mime: "image/jpeg",
+            data,
+            takenAt: s.photoTakenAt || "",
+          });
+        }
+      }
     }
-    return rows;
+    return { rows, photos, samples };
   }
 
   async function guardarCartilla() {
@@ -1262,7 +1613,10 @@ QB.App = (() => {
     try {
       const clientId = c.clientId || QB.API.newClientId();
       c.clientId = clientId;
-      const rows = buildRowsForSave_(c);
+      const packed = buildRowsAndPhotosForSave_(c);
+      const rows = packed.rows;
+      const photos = packed.photos;
+      const samplesForSave = packed.samples;
       const nombre = String(c.evaluadorNombre || "").trim();
       const dni = String(c.evaluadorId || "").replace(/\D/g, "");
       const payload = {
@@ -1281,11 +1635,12 @@ QB.App = (() => {
           etapa: c.etapa,
           variedad: c.variedad,
           area: c.area,
-          campana: c.campana || defaultCampana_(),
+          campana: normalizeCampana_(c.campana || defaultCampana_()),
           observacion: "",
           sampleCount: rows.length,
         },
         rows,
+        photos,
         submittedAt: new Date().toISOString(),
       };
 
@@ -1300,17 +1655,22 @@ QB.App = (() => {
         variedad: c.variedad || "",
         area: c.area != null && c.area !== "" ? c.area : "",
         etapa: c.etapa || "",
-        campana: c.campana || defaultCampana_(),
+        campana: normalizeCampana_(c.campana || defaultCampana_()),
         cartillaLabel: c.cartillaLabel || "Proyecciones",
         evaluador: payload.data.evaluador,
         sampleCount: rows.length,
-        samples: rows.map((r, i) => ({
-          n: i + 1,
-          yema: r["Yema Productiva"] ?? "",
-          abierta: r["Yema Abierta"] ?? "",
-          e1: r["E1 (Verde)"] ?? "",
-          e5: r["E5 (Maduro)"] ?? "",
-        })),
+        samples: samplesForSave.map((s, i) => {
+          const o = {
+            n: i + 1,
+            observacion: s.observacion || "",
+            hasPhoto: !!s.photoDataUrl,
+            photoTakenAt: s.photoTakenAt || "",
+          };
+          (QB.SAMPLE_FIELDS || []).forEach((f) => {
+            o[f.id] = s[f.id] ?? "";
+          });
+          return o;
+        }),
         status: res && res.queued && !res.synced ? "pending" : "saved",
         at: Date.now(),
       });
@@ -1684,8 +2044,12 @@ QB.App = (() => {
     }
   }
 
+  let historialReadyAt_ = 0;
+
   function openHistorial() {
     if (!requireSession_()) return;
+    closeKgDetail_();
+    historialReadyAt_ = Date.now() + 750;
     showScreen("historial");
     const go = () => {
       renderHistorial();
@@ -1699,9 +2063,55 @@ QB.App = (() => {
     }
   }
 
-  function histPeso_() {
+  function readPesoPref_() {
+    try {
+      const v = Number(String(localStorage.getItem(PESO_PREF_KEY) || "").replace(",", "."));
+      if (Number.isFinite(v) && v > 0) return v;
+    } catch (_) {}
     const n = Number(QB.CONFIG && QB.CONFIG.PESO_BAYA_G);
     return Number.isFinite(n) && n > 0 ? n : 2.6;
+  }
+
+  function writePesoPref_(v) {
+    const n = Number(String(v || "").replace(",", "."));
+    if (!Number.isFinite(n) || n <= 0) return readPesoPref_();
+    try {
+      localStorage.setItem(PESO_PREF_KEY, String(n));
+    } catch (_) {}
+    return n;
+  }
+
+  function histPeso_() {
+    return readPesoPref_();
+  }
+
+  function avgStage_(samples, fieldId) {
+    if (!Array.isArray(samples) || !samples.length) return null;
+    let sum = 0;
+    let n = 0;
+    samples.forEach((s) => {
+      const raw =
+        s && s[fieldId] != null
+          ? s[fieldId]
+          : s && s[String(fieldId).toUpperCase()] != null
+            ? s[String(fieldId).toUpperCase()]
+            : "";
+      const v = Number(String(raw).replace(",", "."));
+      if (Number.isFinite(v)) {
+        sum += v;
+        n += 1;
+      }
+    });
+    return n ? sum / n : null;
+  }
+
+  function stageKg_(avgCount, area) {
+    if (avgCount == null) return 0;
+    const peso = histPeso_();
+    const dens = histDensidad_();
+    // Sin área en catálogo: proyecta como 1 ha para no dejar la tabla en cero
+    const a = area != null && area > 0 ? area : 1;
+    return (avgCount * peso * dens) / 1000 * a;
   }
 
   function histDensidad_() {
@@ -1794,31 +2204,22 @@ QB.App = (() => {
     }
   }
 
-  function renderHistorial() {
-    const listEl = $("#historial-list");
-    const emptyEl = $("#historial-empty");
-    const sumEl = $("#historial-summary");
-    if (!listEl) return;
-
-    const pendingN = QB.API.pendingCount ? QB.API.pendingCount() : 0;
+  function collectHistorialRaw_() {
     let history = [];
     try {
       history = QB.API.getUploadHistory ? QB.API.getUploadHistory() : [];
     } catch {
       history = [];
     }
-
     reconcileLocalListStatus_();
     const pendingIds = pendingIds_();
     const localById = {};
     readLocalList_().forEach((x) => {
       if (x && x.clientId) localById[x.clientId] = x;
     });
-
     const localSent = readLocalList_()
       .filter((x) => x && !pendingIds.has(x.clientId))
       .map((x) => ({
-        id: x.clientId,
         clientId: x.clientId,
         status: "sent",
         at: x.at ? new Date(x.at).toISOString() : "",
@@ -1830,32 +2231,23 @@ QB.App = (() => {
         turno: x.turno || "",
         variedad: x.variedad || "",
         area: x.area,
-        evaluador: x.evaluador || "",
-        cartillaLabel: x.cartillaLabel || "Proyecciones",
-        sampleCount: x.sampleCount || (Array.isArray(x.samples) ? x.samples.length : 0) || 0,
         samples: Array.isArray(x.samples) ? x.samples : [],
+        sampleCount: x.sampleCount || 0,
       }));
-
     history = history.map((h) => {
       const loc = localById[h.clientId];
       if (!loc) return h;
       return {
         ...h,
-        fecha: h.fecha || loc.fecha || "",
-        sampleCount: h.sampleCount || loc.sampleCount || 0,
         samples: (h.samples && h.samples.length ? h.samples : loc.samples) || [],
-        cartillaLabel: h.cartillaLabel || loc.cartillaLabel || "Proyecciones",
         lote: h.lote || loc.loteCode || "",
         loteCode: h.lote || loc.loteCode || "",
         loteNum: h.loteNum || loc.loteNum || "",
         modulo: h.modulo || loc.modulo || "",
         turno: h.turno || loc.turno || "",
-        variedad: h.variedad || loc.variedad || "",
         area: h.area != null && h.area !== "" ? h.area : loc.area,
-        evaluador: h.evaluador || loc.evaluador || "",
       };
     });
-
     const seen = new Set(history.map((h) => String(h.clientId || h.id || "")));
     localSent.forEach((s) => {
       const id = String(s.clientId || "");
@@ -1864,7 +2256,6 @@ QB.App = (() => {
         history.push(s);
       }
     });
-
     readLocalList_().forEach((x) => {
       if (!x || !x.clientId || !pendingIds.has(x.clientId)) return;
       const id = String(x.clientId);
@@ -1877,26 +2268,178 @@ QB.App = (() => {
         at: x.at ? new Date(x.at).toISOString() : "",
       });
     });
+    return history;
+  }
 
-    history.sort(
-      (a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime()
-    );
+  /** Última cartilla por módulo+turno+lote (no mezclar envíos viejos). */
+  function buildKgRows_(history) {
+    const stages = QB.HIST_KG_STAGES || [];
+    const latest = new Map();
+    (history || []).forEach((h) => {
+      const enriched = enrichHistRow_(h, h.status === "pending" ? "pending" : "sent");
+      const mod = enriched.modulo || "—";
+      const tur = String(enriched.turno || "—");
+      const lote = enriched.loteCode || h.lote || h.loteCode || "—";
+      const key = `${mod}|${tur}|${lote}`;
+      const at = new Date(h.at || 0).getTime() || 0;
+      const prev = latest.get(key);
+      if (prev && prev.at >= at) return;
+      const kgs = stages.map((st) => {
+        const avg = avgStage_(h.samples || [], st.id);
+        const avg2 = avg != null ? avg : avgStage_(h.samples || [], st.sheet);
+        return stageKg_(avg2, enriched.area);
+      });
+      const total = kgs.reduce((a, b) => a + b, 0);
+      latest.set(key, {
+        id: key,
+        clientId: h.clientId || "",
+        mod,
+        tur,
+        lote,
+        area: enriched.area,
+        status: enriched.status,
+        at,
+        fecha: enriched.fecha || h.fecha || "",
+        sampleCount: Number(h.sampleCount) || (Array.isArray(h.samples) ? h.samples.length : 0) || 0,
+        kgs,
+        total,
+        stages: stages.map((st, i) => ({
+          label: st.label,
+          kg: kgs[i],
+        })),
+        peso: histPeso_(),
+      });
+    });
+    return [...latest.values()].sort((a, b) => {
+      const cm = String(a.mod).localeCompare(String(b.mod), "es");
+      if (cm) return cm;
+      const ct = String(a.tur).localeCompare(String(b.tur), "es");
+      if (ct) return ct;
+      return String(a.lote).localeCompare(String(b.lote), "es");
+    });
+  }
 
-    const rows = history.map((h) =>
-      enrichHistRow_(
-        {
-          ...h,
-          evaluador: h.evaluador || "",
-          cartillaLabel: h.cartillaLabel || "Proyecciones",
-          sampleCount: h.sampleCount || (Array.isArray(h.samples) ? h.samples.length : 0) || 0,
-        },
-        pendingIds.has(h.clientId) ? "pending" : "sent"
-      )
-    );
+  let histKgById_ = {};
 
-    const sentN = rows.filter((r) => r.status === "sent").length;
+  function closeKgDetail_() {
+    const root = $("#qb-kg-detail");
+    if (!root) return;
+    root.classList.remove("open");
+    setTimeout(() => {
+      root.hidden = true;
+    }, 160);
+  }
+
+  function openKgDetail_(id) {
+    // Evita ghost-click al entrar a Historial desde Home
+    if (Date.now() < historialReadyAt_) return;
+    if (state.screen !== "historial") return;
+    if (!id) return;
+    const row = histKgById_[id];
+    if (!row) return;
+    const root = $("#qb-kg-detail");
+    const title = $("#qb-kg-detail-title");
+    const sub = $("#qb-kg-detail-sub");
+    const body = $("#qb-kg-detail-body");
+    if (!root || !title || !body) return;
+    title.textContent = row.lote || "Lote";
+    if (sub) {
+      sub.textContent = `${row.mod} · Turno ${row.tur} · Peso ${fmtNum_(row.peso, 2)} g${
+        row.area != null ? ` · Área ${fmtNum_(row.area, 2)} ha` : ""
+      }${row.sampleCount ? ` · ${row.sampleCount} muestra${row.sampleCount === 1 ? "" : "s"}` : ""}`;
+    }
+    body.innerHTML = `
+      <ul class="qb-kg-detail-list">
+        ${(row.stages || [])
+          .map(
+            (st) =>
+              `<li><span>${escapeHtml(st.label)}</span><strong>${fmtNum_(st.kg, 2)} kg</strong></li>`
+          )
+          .join("")}
+      </ul>
+      <div class="qb-kg-detail-total">
+        <span>Total</span>
+        <strong>${fmtNum_(row.total, 2)} kg</strong>
+      </div>`;
+    root.hidden = false;
+    requestAnimationFrame(() => root.classList.add("open"));
+  }
+
+  function renderHistorial() {
+    const listEl = $("#historial-list");
+    const emptyEl = $("#historial-empty");
+    const sumEl = $("#historial-summary");
+    const pesoInp = $("#hist-peso-input");
+    if (!listEl) return;
+
+    if (pesoInp && document.activeElement !== pesoInp) {
+      pesoInp.value = String(histPeso_());
+    }
+
+    const pendingN = QB.API.pendingCount ? QB.API.pendingCount() : 0;
+    const history = collectHistorialRaw_();
+    const rows = buildKgRows_(history);
+    histKgById_ = {};
+    rows.forEach((r) => {
+      histKgById_[r.id] = r;
+    });
+
+    let grandTotal = 0;
+    const byMod = new Map();
+    rows.forEach((r) => {
+      grandTotal += r.total;
+      if (!byMod.has(r.mod)) byMod.set(r.mod, new Map());
+      const turMap = byMod.get(r.mod);
+      if (!turMap.has(r.tur)) turMap.set(r.tur, []);
+      turMap.get(r.tur).push(r);
+    });
+
+    const bodyRows = [];
+    const mods = [...byMod.keys()].sort((a, b) => String(a).localeCompare(String(b), "es"));
+    mods.forEach((mod) => {
+      const turMap = byMod.get(mod);
+      let modTot = 0;
+      const turBlocks = [];
+      const turs = [...turMap.keys()].sort((a, b) => String(a).localeCompare(String(b), "es"));
+      turs.forEach((tur) => {
+        const lotes = turMap.get(tur) || [];
+        let turTot = 0;
+        const groupId = `${mod}|${tur}`;
+        const loteRows = lotes.map((L) => {
+          turTot += L.total;
+          modTot += L.total;
+          return `<tr class="lote-row is-collapsed" data-tur-group="${escapeAttr(groupId)}" hidden>
+            <td>${escapeHtml(L.lote)}</td>
+            <td class="hist-kg-total-cell"><strong>${fmtNum_(L.total, 2)}</strong> <em>kg</em></td>
+            <td class="hist-kg-detail-cell"><button type="button" class="hist-kg-detail-btn" data-kg-open="${escapeAttr(
+              L.id
+            )}">Ver</button></td>
+          </tr>`;
+        });
+        turBlocks.push(
+          `<tr class="tur-row" data-tur-toggle="${escapeAttr(groupId)}" aria-expanded="false">
+            <td><span class="tur-caret" aria-hidden="true">▸</span> Turno ${escapeHtml(tur)} <em class="tur-count">${
+            lotes.length
+          } lote${lotes.length === 1 ? "" : "s"}</em></td>
+            <td class="hist-kg-total-cell"><strong>${fmtNum_(turTot, 2)}</strong> <em>kg</em></td>
+            <td class="hist-kg-detail-cell"><span class="hist-kg-muted">—</span></td>
+          </tr>${loteRows.join("")}`
+        );
+      });
+      bodyRows.push(
+        `<tr class="mod-row"><td>${escapeHtml(mod)}</td><td class="hist-kg-total-cell"><strong>${fmtNum_(
+          modTot,
+          2
+        )}</strong> <em>kg</em></td><td class="hist-kg-detail-cell"><span class="hist-kg-muted">—</span></td></tr>${turBlocks.join(
+          ""
+        )}`
+      );
+    });
+
     if (sumEl) {
-      sumEl.textContent = `${pendingN} pendiente${pendingN === 1 ? "" : "s"} · ${sentN} enviado${sentN === 1 ? "" : "s"} · Peso ${fmtNum_(histPeso_(), 2)} g`;
+      sumEl.textContent = `${pendingN} pend. · ${rows.length} lote${
+        rows.length === 1 ? "" : "s"
+      } · ${fmtNum_(grandTotal, 2)} kg · Peso ${fmtNum_(histPeso_(), 2)} g`;
     }
 
     if (!rows.length) {
@@ -1906,54 +2449,47 @@ QB.App = (() => {
     }
     if (emptyEl) emptyEl.hidden = true;
 
-    listEl.innerHTML = rows
-      .map((r, idx) => {
-        const st = r.status === "sent" ? "sent" : "pending";
-        const stLabel = st === "sent" ? "Enviado" : "Llenar";
-        const lote = escapeHtml(r.loteCode || "—");
-        const when = escapeHtml(formatHistTime_(r.at));
-        const nSamples = Number(history[idx] && history[idx].sampleCount) || 0;
-        const evalName = escapeHtml((history[idx] && history[idx].evaluador) || "—");
-        const cartilla = escapeHtml((history[idx] && history[idx].cartillaLabel) || "Proyecciones");
-        return `<article class="hist-card ${st}">
-          <div class="hist-summary">
-            <div class="hist-card-top">
-              <strong class="hist-lote">${lote}</strong>
-              <span class="hist-badge">${stLabel}</span>
-          </div>
-            <p class="hist-line">${cartilla} · ${evalName}</p>
-            <p class="hist-line hist-meta-line">${escapeHtml(r.modulo)} · Turno ${escapeHtml(r.turno)} · ${escapeHtml(r.variedad)}</p>
-            <div class="hist-metrics">
-              <div><span>Area</span><strong>${r.area == null ? "—" : fmtNum_(r.area, 2)}</strong></div>
-              <div><span>Bayas E5</span><strong>${r.bayas == null ? "—" : fmtNum_(r.bayas, 0)}</strong></div>
-              <div><span>Peso</span><strong>${fmtNum_(r.peso, 2)} g</strong></div>
-              <div><span>kg/ha</span><strong>${r.kgHa == null ? "—" : fmtNum_(r.kgHa, 0)}</strong></div>
-              <div class="hist-metric-total">
-                <span>${r.kgTot != null ? "kg totales" : "kg/ha"}</span>
-                <strong>${
-                  r.kgTot != null
-                    ? fmtNum_(r.kgTot, 0)
-                    : r.kgHa == null
-                      ? "—"
-                      : fmtNum_(r.kgHa, 0)
-                }</strong>
-                ${
-                  r.kgTot != null
-                    ? `<em class="hist-metric-note">kg/ha ${fmtNum_(r.kgHa, 0)} · área ${fmtNum_(r.area, 2)}</em>`
-                    : r.kgHa != null
-                      ? `<em class="hist-metric-note">Sin área del lote · no hay kg totales</em>`
-                      : ""
-                }
-              </div>
-        </div>
-            <div class="hist-summary-foot">
-              <span class="hist-muestras">${nSamples} muestra${nSamples === 1 ? "" : "s"}</span>
-              <span class="hist-time">${when}</span>
-          </div>
-          </div>
-        </article>`;
-      })
-      .join("");
+    listEl.innerHTML = `<table class="hist-kg-table hist-kg-compact">
+      <thead><tr><th>Campo</th><th>Total</th><th>Detalles</th></tr></thead>
+      <tbody>
+        ${bodyRows.join("")}
+        <tr class="total-row"><td>Total</td><td class="hist-kg-total-cell"><strong>${fmtNum_(
+          grandTotal,
+          2
+        )}</strong> <em>kg</em></td><td class="hist-kg-detail-cell"><span class="hist-kg-muted">—</span></td></tr>
+      </tbody>
+    </table>
+    <p class="hist-kg-foot">1-${rows.length} de ${rows.length} lotes · ${fmtNum_(
+      grandTotal,
+      2
+    )} kg · toca un turno para ver lotes</p>`;
+
+    listEl.querySelectorAll("[data-tur-toggle]").forEach((tr) => {
+      tr.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (Date.now() < historialReadyAt_) return;
+        const gid = tr.getAttribute("data-tur-toggle");
+        const open = tr.getAttribute("aria-expanded") === "true";
+        const next = !open;
+        tr.setAttribute("aria-expanded", next ? "true" : "false");
+        tr.classList.toggle("is-open", next);
+        listEl.querySelectorAll("tr.lote-row[data-tur-group]").forEach((row) => {
+          if (row.getAttribute("data-tur-group") !== gid) return;
+          row.hidden = !next;
+          row.classList.toggle("is-collapsed", !next);
+        });
+      });
+    });
+
+    listEl.querySelectorAll("[data-kg-open]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (Date.now() < historialReadyAt_) return;
+        openKgDetail_(btn.getAttribute("data-kg-open"));
+      });
+    });
   }
 
   /** Responde al soltar el dedo/mouse, sin esperar el click lento del navegador. */
@@ -2012,6 +2548,7 @@ QB.App = (() => {
 
   /* ——— Bind ——— */
   function bind() {
+    bindCameraSheet_();
     fastTap_($("#btn-crear"), openCreateModal);
     fastTap_($("#btn-create-cancel"), closeCreateModal);
     $("#create-modal-backdrop")?.addEventListener("click", (e) => {
@@ -2063,15 +2600,57 @@ QB.App = (() => {
       e.preventDefault();
       entrar_();
     });
+    fastTap_($("#btn-login-next"), (e) => {
+      e.preventDefault();
+      loginNextStep_();
+    });
     fastTap_($("#btn-login"), (e) => {
       e.preventDefault();
       entrar_();
     });
+    fastTap_($("#btn-login-back"), (e) => {
+      e.preventDefault();
+      setLoginStep_(1);
+      $("#login-error") && (($("#login-error").hidden = true), ($("#login-error").textContent = ""));
+      setTimeout(() => $("#login-dni")?.focus(), 40);
+    });
     $("#login-dni")?.addEventListener("input", (e) => {
       e.target.value = String(e.target.value || "").replace(/\D/g, "").slice(0, 8);
     });
+    $("#login-dni")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        loginNextStep_();
+      }
+    });
     $("#login-pass")?.addEventListener("input", (e) => {
       e.target.value = String(e.target.value || "").replace(/\D/g, "").slice(0, 8);
+    });
+    const pesoInp = $("#hist-peso-input");
+    if (pesoInp) {
+      pesoInp.value = String(histPeso_());
+      let pesoTimer = 0;
+      const applyPesoLive_ = () => {
+        writePesoPref_(pesoInp.value);
+        if (state.screen === "historial") renderHistorial();
+      };
+      pesoInp.addEventListener("input", () => {
+        if (pesoTimer) clearTimeout(pesoTimer);
+        pesoTimer = setTimeout(applyPesoLive_, 180);
+      });
+      pesoInp.addEventListener("change", applyPesoLive_);
+      pesoInp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          pesoInp.blur();
+          applyPesoLive_();
+        }
+      });
+    }
+    fastTap_($("#qb-kg-detail-close"), closeKgDetail_);
+    fastTap_($("#qb-kg-detail-done"), closeKgDetail_);
+    $("#qb-kg-detail")?.addEventListener("click", (e) => {
+      if (e.target && e.target.id === "qb-kg-detail") closeKgDetail_();
     });
     fastTap_($("#sel-cartilla"), openCartillaSelect);
     fastTap_($("#sel-modulo"), openModuloSelect);
@@ -2099,6 +2678,7 @@ QB.App = (() => {
 
     fastTap_($("#btn-historial"), openHistorial);
     fastTap_($("#btn-back-historial"), () => {
+      closeKgDetail_();
       showScreen("home");
       renderHomeList();
     });
@@ -2138,9 +2718,12 @@ QB.App = (() => {
     });
     window.addEventListener("qb:sync", (ev) => {
       updatePendingUi();
-      if (state.screen === "historial") renderHistorial();
-      if (state.screen === "home") renderHomeList();
       const d = (ev && ev.detail) || {};
+      // Recalcula tabla KG al avanzar sync / al terminar (pendientes que suben)
+      if (state.screen === "historial" && (d.phase === "progress" || d.phase === "done" || d.phase === "start")) {
+        renderHistorial();
+      }
+      if (state.screen === "home") renderHomeList();
       if (d.phase === "done" && Number(d.sent) > 0) {
         const n = Number(d.sent) || 0;
         const remain = Number(d.remain) || 0;

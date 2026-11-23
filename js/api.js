@@ -16,15 +16,15 @@ QB.API = (() => {
   const LAST_SYNC_KEY = "qb_proy_last_sync_at";
   const EVAL_TYPES = ["proyecciones"];
   const TZ_OPS = "America/Lima";
-  const BATCH_SIZE = 4; // 3G/H+: lotes chicos confirman rápido y no se atascan
+  const BATCH_SIZE = 5; // 3G/H+: lote corto, confirma y sigue
   // Tope si no hay respuesta. Con señal, se borra al confirmar el servidor.
-  const FETCH_TIMEOUT_MS = 35000;
+  const FETCH_TIMEOUT_MS = 28000;
   const MAX_ATTEMPTS = 12;
-  const MAX_BACKOFF_MS = 12 * 1000;
-  const WATCHDOG_STALE_MS = 90000;
-  const SYNC_PROGRESS_UI_MS = 350;
-  const YIELD_BETWEEN_BATCH_MS = 24;
-  const SOFT_SEND_MS = 80;
+  const MAX_BACKOFF_MS = 8 * 1000;
+  const WATCHDOG_STALE_MS = 75000;
+  const SYNC_PROGRESS_UI_MS = 280;
+  const YIELD_BETWEEN_BATCH_MS = 0;
+  const SOFT_SEND_MS = 30;
 
   /** Cola en memoria + conteo O(1) para no recorrer 300 ítems en cada chip */
   let memQueue = [];
@@ -455,6 +455,7 @@ QB.API = (() => {
       clientId: id,
       data: record?.data || {},
       rows: Array.isArray(record?.rows) ? record.rows : [],
+      photos: Array.isArray(record?.photos) ? record.photos : [],
       score: record?.score || {},
       submittedAt: record?.submittedAt || new Date().toISOString(),
       status: record?.status || "pending",
@@ -934,14 +935,24 @@ QB.API = (() => {
       fecha: d.fecha || "",
       cartillaLabel: d.cartillaLabel || "Proyecciones",
       sampleCount,
-      samples: rows.map((r, i) => ({
-        n: r["N° Muestra"] != null ? r["N° Muestra"] : i + 1,
-        yema: r["Yema Productiva"] ?? "",
-        abierta: r["Yema Abierta"] ?? "",
-        e1: r["E1 (Verde)"] ?? "",
-        e5: r["E5 (Maduro)"] ?? "",
-        Area: r.Area ?? r.area ?? "",
-      })),
+      samples: rows.map((r, i) => {
+        const o = {
+          n: r["N° Muestra"] != null ? r["N° Muestra"] : i + 1,
+          yema: r["Yema Productiva"] ?? "",
+          abierta: r["Yema Abierta"] ?? "",
+          e1: r["E1 (Verde)"] ?? "",
+          e5: r["E5 (Maduro)"] ?? "",
+          boton_floral: r["Botón Floral"] ?? "",
+          flor: r.Flor ?? r.flor ?? "",
+          cuaja: r.Cuaja ?? r.cuaja ?? "",
+          e2: r["E2 (Rosado)"] ?? "",
+          e3: r["E3 (Guinda)"] ?? "",
+          e4: r["E4 (50%-70%)"] ?? "",
+          Area: r.Area ?? r.area ?? "",
+          Anexo: r.Anexo || "",
+        };
+        return o;
+      }),
       nota: s.nota,
       calidadGlobal: s.calidadGlobal || "",
       status: "pending",
@@ -1119,7 +1130,8 @@ QB.API = (() => {
   }
 
   function toWirePayload_(item) {
-    return {
+    const photos = Array.isArray(item.photos) ? item.photos.filter((p) => p && p.data && p.n) : [];
+    const wire = {
       action: "save",
       type: item.type || "proyecciones",
       sheet: item.sheet || "Proyecciones",
@@ -1129,6 +1141,9 @@ QB.API = (() => {
       score: slimScore_(item.score),
       submittedAt: item.submittedAt,
     };
+    // Solo adjunta fotos de muestras que las tienen (por N° Muestra)
+    if (photos.length) wire.photos = photos;
+    return wire;
   }
 
   /**

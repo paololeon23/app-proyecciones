@@ -81,6 +81,38 @@
     </div>
   </div>
 
+  <div class="qb-kg-detail" id="qb-kg-detail" hidden>
+    <div class="qb-kg-detail-sheet" role="dialog" aria-modal="true" aria-labelledby="qb-kg-detail-title">
+      <div class="qb-kg-detail-head">
+        <div>
+          <p class="qb-kg-detail-kicker">Detalle KG</p>
+          <h2 id="qb-kg-detail-title">—</h2>
+          <p class="qb-kg-detail-sub" id="qb-kg-detail-sub"></p>
+        </div>
+        <button type="button" class="qb-kg-detail-close" id="qb-kg-detail-close" aria-label="Cerrar">×</button>
+      </div>
+      <div class="qb-kg-detail-body" id="qb-kg-detail-body"></div>
+      <button type="button" class="qb-kg-detail-done" id="qb-kg-detail-done">Cerrar</button>
+    </div>
+  </div>
+
+  <div class="qb-camera" id="qb-camera" hidden>
+    <div class="qb-camera-sheet" role="dialog" aria-modal="true" aria-labelledby="qb-camera-title">
+      <div class="qb-camera-top">
+        <strong id="qb-camera-title">Cámara</strong>
+        <button type="button" class="qb-camera-close" id="qb-camera-close" aria-label="Cerrar">×</button>
+      </div>
+      <div class="qb-camera-view">
+        <video id="qb-camera-video" playsinline autoplay muted></video>
+        <canvas id="qb-camera-canvas" hidden></canvas>
+      </div>
+      <p class="qb-camera-hint">La foto llevará fecha y hora</p>
+      <div class="qb-camera-actions">
+        <button type="button" class="qb-camera-shot" id="qb-camera-shot">Tomar foto</button>
+      </div>
+    </div>
+  </div>
+
   <div class="qb-fb" id="qb-fb" hidden aria-live="polite">
     <div class="qb-fb-sheet" role="dialog" aria-modal="true">
       <div class="qb-fb-icon" id="qb-fb-icon" aria-hidden="true"></div>
@@ -173,7 +205,7 @@
         </div>
         <button type="button" class="create-campana" id="sel-campana" aria-label="Campaña">
           <span class="create-campana-kicker">Campaña</span>
-          <strong id="sel-campana-label">2026 - II</strong>
+          <strong id="sel-campana-label">2026</strong>
         </button>
       </div>
       <p class="create-lead">Completa los datos para abrir la cartilla</p>
@@ -203,21 +235,31 @@
   </div>
 
   <div class="qb-login" id="qb-login" role="dialog" aria-modal="true" aria-labelledby="login-title">
-    <form class="qb-login-card" id="qb-login-form" autocomplete="off">
+    <form class="qb-login-card" id="qb-login-form" autocomplete="off" data-login-step="1">
       <img class="qb-login-logo" src="assets/logo-qberries.png" alt="Q Berries" width="84" height="84" />
       <p class="qb-login-brand">Q BERRIES · PROYECCIONES</p>
       <h1 id="login-title">Iniciar sesión</h1>
-      <p class="qb-login-lead">Ingrese su documento. La contraseña es el mismo número de DNI.</p>
-      <label class="qb-login-field">
+      <p class="qb-login-lead" id="login-lead">Paso 1 de 2 · Ingresa tu DNI</p>
+      <div class="qb-login-steps" aria-hidden="true">
+        <span class="qb-login-step-dot is-on" data-step-dot="1"></span>
+        <span class="qb-login-step-dot" data-step-dot="2"></span>
+      </div>
+      <label class="qb-login-field" id="login-field-dni">
         <span>Documento de identidad</span>
         <input id="login-dni" inputmode="numeric" maxlength="8" autocomplete="username" placeholder="Ingrese su DNI" />
       </label>
-      <label class="qb-login-field is-clave">
+      <label class="qb-login-field is-clave" id="login-field-pass" hidden>
         <span>Contraseña</span>
-        <input id="login-pass" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" placeholder="Ingrese su DNI" />
+        <input id="login-pass" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" placeholder="Ingresa tu contraseña" />
       </label>
       <p class="qb-login-error" id="login-error" hidden></p>
-      <button type="submit" class="qb-login-btn" id="btn-login">Iniciar sesión</button>
+      <button type="button" class="qb-login-btn" id="btn-login-next">Continuar</button>
+      <button type="submit" class="qb-login-btn" id="btn-login" hidden>Iniciar sesión</button>
+      <button type="button" class="qb-login-back" id="btn-login-back" hidden>Cambiar DNI</button>
+      <div class="qb-login-loading" id="login-loading" hidden>
+        <span class="qb-spinner" aria-hidden="true"></span>
+        <p>Espere… iniciando sesión</p>
+      </div>
     </form>
   </div>
 
@@ -427,8 +469,20 @@
         </div>
       </header>
       <div class="panel-scroll historial-wrap">
+        <div class="hist-peso-bar" id="hist-peso-bar">
+          <label class="hist-peso-label">
+            <span>Peso baya (g)</span>
+            <input type="text" inputmode="decimal" id="hist-peso-input" autocomplete="off" aria-label="Peso de baya en gramos" />
+          </label>
+          <p class="hist-peso-hint">Se usa para proyectar kg · editable como en Escaneadas</p>
+        </div>
         <p class="historial-summary" id="historial-summary"></p>
-        <div class="historial-list" id="historial-list"></div>
+        <div class="hist-kg-panel">
+          <div class="hist-kg-head">
+            <strong>Tabla resumen · KG</strong>
+          </div>
+          <div class="hist-kg-scroll" id="historial-list"></div>
+        </div>
         <p class="historial-empty" id="historial-empty" hidden>Sin registros de envío todavía.</p>
       </div>
     </section>
