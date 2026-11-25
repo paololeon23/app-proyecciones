@@ -476,7 +476,7 @@ html.qb-locked .qb-login {
 }
 html.qb-locked .fab-wrap,
 body:has(#qb-login:not([hidden])) .fab-wrap,
-body:has(.create-modal.open) .fab-wrap,
+body.create-modal-open .fab-wrap,
 body[data-qb-screen="cartilla"] .fab-wrap,
 body[data-qb-screen="resumen"] .fab-wrap,
 html.is-desktop .fab-wrap {
@@ -2341,6 +2341,15 @@ html.is-desktop .fab-wrap {
 body > .form-actions { display: none; pointer-events: none; }
 body[data-qb-screen="form"] > .form-actions:not(.dual) { display: grid; pointer-events: auto; }
 body[data-qb-screen="home"] > .form-actions.proy-home { display: grid; pointer-events: auto; }
+/* Home: CREAR nunca debe quedar invisible tras guardar / cerrar modal */
+body[data-qb-screen="home"]:not(.create-modal-open):not(.qb-locked) > .form-actions.proy-home {
+  display: grid !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+body[data-qb-screen="home"]:not(.create-modal-open):not(.qb-locked) > .form-actions.proy-home .btn {
+  pointer-events: auto !important;
+}
 body[data-qb-screen="cartilla"] > .form-actions.proy-cartilla { display: grid; pointer-events: auto; }
 body[data-qb-screen="resumen"] > .form-actions.proy-resumen { display: grid; pointer-events: auto; }
 #screen-form .form-body {
@@ -4308,10 +4317,10 @@ html.precise-open body {
   opacity: 1;
   pointer-events: auto;
 }
-/* Ocultar barra fija del body mientras el modal está abierto */
-body:has(.create-modal.open) > .form-actions {
-  visibility: hidden;
-  pointer-events: none;
+/* Ocultar barra fija del body solo mientras el modal CREAR está abierto */
+body.create-modal-open > .form-actions {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 .create-modal-backdrop {
   position: absolute;
@@ -5275,29 +5284,45 @@ body:has(.create-modal.open) > .form-actions {
   color: rgba(31, 61, 42, 0.35);
   font-weight: 700;
 }
-.mod-row.is-accordion {
+.mod-row.is-accordion,
+.tur-row.is-accordion {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
-.mod-row .mod-caret {
+.mod-row .mod-caret,
+.tur-row .mod-caret {
   display: inline-block;
   width: 1em;
   font-weight: 800;
   transition: transform 0.15s ease;
 }
-.mod-row.is-open .mod-caret {
+.mod-row.is-open .mod-caret,
+.tur-row.is-open .mod-caret {
   transform: rotate(90deg);
 }
-.mod-row .mod-count {
+.mod-row .mod-count,
+.tur-row .mod-count {
   font-style: normal;
   font-size: 0.68rem;
   font-weight: 700;
   opacity: 0.65;
   margin-left: 6px;
 }
-.mod-row.is-accordion:active {
+.mod-row.is-accordion:active,
+.tur-row.is-accordion:active {
   filter: brightness(0.97);
+}
+.tur-row td {
+  background: #EAF3EC !important;
+  font-weight: 750;
+}
+.tur-row td:first-child {
+  padding-left: 14px;
+}
+.lote-row td:first-child {
+  padding-left: 28px;
+  font-weight: 700;
 }
 .lote-row .lote-tur {
   display: inline-block;
@@ -5307,6 +5332,7 @@ body:has(.create-modal.open) > .form-actions {
   font-weight: 800;
   opacity: 0.55;
 }
+.tur-row[hidden],
 .lote-row[hidden] {
   display: none !important;
 }
@@ -5661,10 +5687,14 @@ body:has(.create-modal.open) > .form-actions {
 .hist-kg-table tr.mod-row td {
   background: #E8F3EA;
   font-weight: 800;
+}
+.hist-kg-table tr.tur-row td {
+  background: #EAF3EC;
+  font-weight: 750;
   color: var(--qb-forest);
 }
 .hist-kg-table tr.lote-row td:first-child {
-  padding-left: 18px;
+  padding-left: 28px;
 }
 .hist-kg-table tr.total-row td {
   background: #1F3D2A;

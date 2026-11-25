@@ -16,15 +16,15 @@ QB.API = (() => {
   const LAST_SYNC_KEY = "qb_proy_last_sync_at";
   const EVAL_TYPES = ["proyecciones"];
   const TZ_OPS = "America/Lima";
-  const BATCH_SIZE = 5; // 3G/H+: lote corto, confirma y sigue
-  // Tope si no hay respuesta. Con señal, se borra al confirmar el servidor.
-  const FETCH_TIMEOUT_MS = 28000;
-  const MAX_ATTEMPTS = 12;
-  const MAX_BACKOFF_MS = 8 * 1000;
-  const WATCHDOG_STALE_MS = 75000;
+  const BATCH_SIZE = 3; // 3G/H+: lote chico = confirma más rápido
+  // Tope si no hay respuesta. 3G/H+ con fotos necesita más margen.
+  const FETCH_TIMEOUT_MS = 45000;
+  const MAX_ATTEMPTS = 16;
+  const MAX_BACKOFF_MS = 5 * 1000;
+  const WATCHDOG_STALE_MS = 120000;
   const SYNC_PROGRESS_UI_MS = 280;
   const YIELD_BETWEEN_BATCH_MS = 0;
-  const SOFT_SEND_MS = 30;
+  const SOFT_SEND_MS = 0;
 
   /** Cola en memoria + conteo O(1) para no recorrer 300 ítems en cada chip */
   let memQueue = [];
@@ -531,16 +531,17 @@ QB.API = (() => {
     return idbReady;
   }
 
-  /** Con señal no se abandona la cola: si un grupo falla, se reintenta más seguido. */
+  /** Con señal no se abandona la cola: si un grupo falla, se reintenta más seguido (3G/H+). */
   function nextOnlineDelay_(sentSome) {
     if (sentSome) {
       onlineMisses_ = 0;
-      return 400;
+      return 250;
     }
     onlineMisses_ += 1;
-    if (onlineMisses_ <= 1) return 2000;
-    if (onlineMisses_ <= 3) return 5000;
-    return 12000;
+    if (onlineMisses_ <= 1) return 800;
+    if (onlineMisses_ <= 3) return 1800;
+    if (onlineMisses_ <= 6) return 3500;
+    return 7000;
   }
 
   function armOnlineRetry_() {
@@ -1052,15 +1053,31 @@ QB.API = (() => {
       const fechaRaw = row.Fecha;
       let fecha = "";
       if (fechaRaw != null && fechaRaw !== "") {
-        const s = String(fechaRaw);
-        const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
-        fecha = m ? m[1] : s.slice(0, 10);
+        const s = String(fechaRaw).trim();
+        const mIso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (mIso) {
+          fecha = mIso[1];
+        } else {
+          const mDmY = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+          if (mDmY) {
+            fecha = `${mDmY[3]}-${mDmY[2].padStart(2, "0")}-${mDmY[1].padStart(2, "0")}`;
+          } else {
+            const t = Date.parse(s);
+            fecha = Number.isFinite(t) ? dayKeyLima_(new Date(t).toISOString()) : s.slice(0, 10);
+          }
+        }
       }
       const mod = String(row.Modulo || "").trim() || "—";
       const tur =
         row.Turno != null && row.Turno !== "" ? String(row.Turno).trim() : "—";
       const lote = String(row.Lote || "").trim() || "—";
-      const dni = String(row.DNI || "").replace(/\D/g, "");
+      let dni = String(row.DNI != null && row.DNI !== "" ? row.DNI : "")
+        .replace(/\.0+$/, "")
+        .replace(/\D/g, "");
+      if (!/^\d{8}$/.test(dni)) {
+        const mEv = String(row.Evaluador || "").match(/(\d{8})/);
+        dni = mEv ? mEv[1] : "";
+      }
       const key = `${fecha}|${mod}|${tur}|${lote}|${dni}`;
       if (!map.has(key)) {
         map.set(key, {
@@ -1317,7 +1334,11 @@ QB.API = (() => {
       return { ok: true, mode: "demo", message: "Guardado local", local: true, synced: true };
     }
 
-    if (navigator.onLine) scheduleSoftSend_(SOFT_SEND_MS, true);
+    if (navigator.onLine) {
+      // Disparo inmediato + refuerzo por si el primero quedó busy
+      scheduleSoftSend_(SOFT_SEND_MS, true);
+      scheduleSoftSend_(450, true);
+    }
 
     return {
       ok: true,
@@ -1376,7 +1397,8 @@ QB.API = (() => {
       item.attempts = (Number(item.attempts) || 0) + 1;
       item.status = "error";
       item.lastError = String(reason || "retry").slice(0, 180);
-      item.nextRetryAt = now + 1000;
+      // Reintento casi inmediato en 3G (no dejar “pegado” el pendiente)
+      item.nextRetryAt = now + 350;
       item.updatedAt = now;
     }
     try {
@@ -1572,6 +1594,7 @@ QB.API = (() => {
         }
 
         let results = null;
+        let batchAborted = false;
         try {
           touchProgress_();
           const { res, json } = await fetchJson_(
@@ -1587,11 +1610,12 @@ QB.API = (() => {
             results = json.results;
           }
         } catch (err) {
-          if (err?.name === "AbortError") {
-            await parkBatch_(batch, watchdogFired ? "watchdog" : "timeout");
+          batchAborted = err?.name === "AbortError";
+          if (batchAborted && watchdogFired) {
+            await parkBatch_(batch, "watchdog");
             failed += batch.length;
             touchProgress_();
-            if (watchdogFired) stale = true;
+            stale = true;
             break;
           }
           results = null;
@@ -1611,10 +1635,15 @@ QB.API = (() => {
           failed += singles.failed;
           touchProgress_();
         } else {
-          await parkBatch_(batch, "retry");
-          failed += batch.length;
+          // 3G/H+: si el lote falla/timeout, envía 1×1 en vez de dejar todo pendiente
+          const singles = await sendUnconfirmed_(url, batch, syncAbortCtrl.signal);
+          roundSent += singles.sent;
+          failed += singles.failed;
           touchProgress_();
-          break;
+          if (batchAborted && !singles.sent) {
+            // timeout duro sin avance: sale y reintenta soft pronto
+            break;
+          }
         }
         sent += roundSent;
         if (!roundSent) break;

@@ -680,17 +680,18 @@
       window.addEventListener("load", function () {
         navigator.serviceWorker.register("./sw.js").then(function (reg) {
           watchReg(reg);
-          setInterval(function () {
-            try { reg.update(); } catch (_) {}
-          }, 60 * 1000);
+          function safeUpdate() {
+            // update() es Promise: try/catch no atrapa el fallo (Live Server caído, etc.)
+            try {
+              var p = reg.update();
+              if (p && typeof p.catch === "function") p.catch(function () {});
+            } catch (_) {}
+          }
+          setInterval(safeUpdate, 60 * 1000);
           document.addEventListener("visibilitychange", function () {
-            if (!document.hidden) {
-              try { reg.update(); } catch (_) {}
-            }
+            if (!document.hidden) safeUpdate();
           });
-          window.addEventListener("online", function () {
-            try { reg.update(); } catch (_) {}
-          });
+          window.addEventListener("online", safeUpdate);
         }).catch(function () {});
       });
     })();

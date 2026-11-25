@@ -676,11 +676,16 @@ function readSheetRows_(sheetName) {
     var any = false;
     for (var i = 0; i < headers.length; i++) {
       var cell = values[r][i];
+      var headerName = headers[i];
       if (Object.prototype.toString.call(cell) === '[object Date]' && !isNaN(cell.getTime())) {
         cell = Utilities.formatDate(cell, 'America/Lima', 'yyyy-MM-dd');
       }
+      // DNI numérico de Sheets → texto sin .0 / notación científica
+      if ((headerName === 'DNI' || headerName === 'dni') && typeof cell === 'number' && isFinite(cell)) {
+        cell = String(Math.round(cell));
+      }
       if (cell !== '' && cell != null) any = true;
-      obj[headers[i]] = cell == null ? '' : cell;
+      obj[headerName] = cell == null ? '' : cell;
     }
     if (!any) continue;
     obj._row = r + 1;
@@ -725,7 +730,11 @@ function listProyecciones_(p) {
       if (m) rowDni = m[1];
     }
     if (dni && rowDni !== dni) continue;
-    if (campana && String(row['Campaña'] || '').toLowerCase().indexOf(campana) === -1) continue;
+    // Campaña vacía en hoja = no excluir (datos viejos / sin rellenar)
+    if (campana) {
+      var rowCamp = String(row['Campaña'] || '').toLowerCase().trim();
+      if (rowCamp && rowCamp.indexOf(campana) === -1) continue;
+    }
     if (q) {
       var blob = [row.Lote, row.Nombre, row.Evaluador, row.DNI, row.Modulo, row.Variedad].join(' ').toLowerCase();
       if (blob.indexOf(q) === -1) continue;

@@ -340,6 +340,38 @@ QB.App = (() => {
   };
 
   /* ——— Screens ——— */
+  /** CREAR del home: siempre montado y visible en home (nunca se pierde tras guardar) */
+  function ensureHomeCreateBar_() {
+    mountActionBars_();
+    const modal = $("#create-modal");
+    if (modal) {
+      modal.classList.remove("open");
+      modal.hidden = true;
+    }
+    document.body.classList.remove("create-modal-open");
+    let bar =
+      document.querySelector("body > .form-actions.proy-home") ||
+      $("#screen-home .form-actions.proy-home") ||
+      $("#btn-crear")?.closest(".form-actions");
+    if (bar && bar.parentElement !== document.body) {
+      document.body.appendChild(bar);
+    }
+    if (!bar) return null;
+    bar.hidden = false;
+    bar.removeAttribute("hidden");
+    bar.style.removeProperty("display");
+    bar.style.removeProperty("visibility");
+    bar.style.pointerEvents = "auto";
+    bar.querySelectorAll(".btn").forEach((btn) => {
+      btn.hidden = false;
+      btn.removeAttribute("hidden");
+      btn.style.pointerEvents = "auto";
+      btn.style.removeProperty("visibility");
+      btn.style.removeProperty("display");
+    });
+    return bar;
+  }
+
   function showScreen(id) {
     if (!readSession_()) {
       setAuthUi_(false);
@@ -356,13 +388,18 @@ QB.App = (() => {
     document.body.dataset.qbScreen = id;
     // Salir de cartilla: bajar barra (como Calidad)
     if (id !== "cartilla") resetKeyboardBar_();
+    if (id === "home") {
+      ensureHomeCreateBar_();
+    }
     // Asegura que las barras visibles reciban toques
     const unlocked = !!readSession_();
     const guardOn = Date.now() < cameraGuardUntil_;
+    const createOpen = document.body.classList.contains("create-modal-open");
     $$("body > .form-actions").forEach((bar) => {
       const on =
         unlocked &&
         !guardOn &&
+        !createOpen &&
         ((id === "home" && bar.classList.contains("proy-home")) ||
           (id === "cartilla" && bar.classList.contains("proy-cartilla")) ||
           (id === "resumen" && bar.classList.contains("proy-resumen")));
@@ -380,9 +417,12 @@ QB.App = (() => {
         "#screen-home > .form-actions, #screen-cartilla > .form-actions, #screen-resumen > .form-actions"
       )
       .forEach((bar) => {
-      document.body.appendChild(bar);
-    });
-    document.body.dataset.qbScreen = state.screen || "home";
+        document.body.appendChild(bar);
+      });
+    // Si ya estaban en body (re-mount), no hace falta; deja data-qb-screen
+    if (!document.body.dataset.qbScreen) {
+      document.body.dataset.qbScreen = state.screen || "home";
+    }
   }
 
   /* ——— Local list (historial de cartillas guardadas) ——— */
@@ -778,6 +818,8 @@ QB.App = (() => {
     writePrefs_({
       modulo: "",
       turno: "",
+      fundoId: "",
+      fundoLabel: "",
       cartillaId: "proyecciones",
       cartillaLabel: "Fenología",
     });
@@ -785,10 +827,12 @@ QB.App = (() => {
     state.create.turno = "";
     state.create.loteId = "";
     state.create.loteMeta = null;
+    state.create.fundoId = "";
+    state.create.fundoLabel = "";
     state.create.cartillaId = "proyecciones";
     state.create.cartillaLabel = "Fenología";
     setSelectLabel($("#sel-cartilla"), "Fenología");
-    setSelectLabel($("#sel-fundo"), state.create.fundoLabel || "");
+    setSelectLabel($("#sel-fundo"), "");
     setSelectLabel($("#sel-modulo"), "");
     setSelectLabel($("#sel-turno"), "");
     setSelectLabel($("#sel-lote"), "");
@@ -819,6 +863,7 @@ QB.App = (() => {
     createOpenedAt_ = Date.now();
     modal.hidden = false;
     modal.classList.add("open");
+    document.body.classList.add("create-modal-open");
   }
 
   let createOpenedAt_ = 0;
@@ -829,8 +874,11 @@ QB.App = (() => {
     // Evita que el mismo toque de CREAR cierre el modal al instante
     if (!(opts && opts.force) && Date.now() - createOpenedAt_ < 450) return;
     modal.classList.remove("open");
+    document.body.classList.remove("create-modal-open");
     setTimeout(() => {
       modal.hidden = true;
+      // Tras cerrar modal: si estamos en home, CREAR debe verse
+      if (state.screen === "home") ensureHomeCreateBar_();
     }, 180);
   }
 
@@ -1835,16 +1883,34 @@ QB.App = (() => {
       clearSelectsAfterSave_();
       renderHomeList();
       showScreen("home");
+      ensureHomeCreateBar_();
+      // Empuja la cola ya (3G/H+): no esperar al soft timer
+      try {
+        if (navigator.onLine && QB.API && QB.API.flushQueue) {
+          QB.API.flushQueue({ soft: true, includeOld: true, revive: true }).catch(() => {});
+        }
+      } catch (_) {}
       const n = rows.length;
+      const stillPending = res && res.queued && !res.synced;
       await feedback({
         title: res && res.offline ? "Guardado offline" : "Cartilla guardada",
         text: res && res.offline
           ? "Se enviará cuando haya señal."
-          : `${n} muestra${n === 1 ? "" : "s"} lista${n === 1 ? "" : "s"} para envío.`,
+          : stillPending
+            ? `${n} muestra${n === 1 ? "" : "s"} en cola · enviando ahora…`
+            : `${n} muestra${n === 1 ? "" : "s"} lista${n === 1 ? "" : "s"} para envío.`,
         type: "ok",
         confirmText: "Listo",
         autoClose: 1600,
       });
+      // Tras el feedback: reafirma CREAR (algunos WebViews dejan :has/visibility pegado)
+      showScreen("home");
+      ensureHomeCreateBar_();
+      try {
+        if (navigator.onLine && QB.API && QB.API.flushQueue) {
+          QB.API.flushQueue({ soft: true, includeOld: true, revive: true }).catch(() => {});
+        }
+      } catch (_) {}
     } catch (err) {
       await feedback({
         title: "No se pudo guardar",
@@ -1852,9 +1918,11 @@ QB.App = (() => {
         type: "error",
         confirmText: "Entendido",
       });
+      if (state.screen === "home") ensureHomeCreateBar_();
     } finally {
       state.saving = false;
       setLoader(false);
+      if (state.screen === "home") ensureHomeCreateBar_();
     }
   }
 
@@ -1890,6 +1958,7 @@ QB.App = (() => {
   function renderHomeList() {
     renderDraftBanner_();
     renderLastSend_();
+    if (state.screen === "home") ensureHomeCreateBar_();
   }
 
   function renderDraftBanner_() {
@@ -2413,8 +2482,9 @@ QB.App = (() => {
     };
     const afterLocal = () => {
       go();
-      // GET hoja Proyecciones según filtros (fechas → internet)
-      refreshRemoteHistorial_(false).then((ok) => {
+      // GET hoja según filtros (fuerza si caché vacía)
+      const forceGet = !remoteHistCache_ || !remoteHistCache_.length;
+      refreshRemoteHistorial_(forceGet).then((ok) => {
         if (ok && state.screen === "historial") renderHistorial();
       });
     };
@@ -2604,7 +2674,6 @@ QB.App = (() => {
       "boton_floral",
       "flor",
       "cuaja",
-      "yema_productiva",
       "n_ramas",
     ];
     let score = samples.length * 20;
@@ -2664,6 +2733,8 @@ QB.App = (() => {
     desde: "",
     hasta: "",
   };
+  /** Si el usuario eligió "Todos" en evaluador, no volver a forzar su DNI */
+  let histEvalUserCleared_ = false;
 
   function readHistFiltersFromUi_() {
     // módulo / evaluador / fechas viven en histFilters_ (botones formales)
@@ -2682,7 +2753,7 @@ QB.App = (() => {
     const evalBtn = $("#hist-filtro-eval");
     const desdeBtn = $("#hist-filtro-desde");
     const hastaBtn = $("#hist-filtro-hasta");
-    setSelectLabel(modBtn, histFilters_.modulo || "", !histFilters_.modulo);
+    setSelectLabel(modBtn, histFilters_.modulo || "Todos", !histFilters_.modulo);
     if (histFilters_.dni) {
       const p =
         QB.Data && QB.Data.personByDni
@@ -2693,7 +2764,8 @@ QB.App = (() => {
         histFilters_.dni;
       setSelectLabel(evalBtn, nom, false);
     } else {
-      setSelectLabel(evalBtn, "", true);
+      // Borró evaluador → select queda en Todos (limpio)
+      setSelectLabel(evalBtn, "Todos", true);
     }
     setSelectLabel(desdeBtn, fmtFechaUi_(histFilters_.desde), !histFilters_.desde);
     setSelectLabel(hastaBtn, fmtFechaUi_(histFilters_.hasta), !histFilters_.hasta);
@@ -2900,7 +2972,9 @@ QB.App = (() => {
       value: histFilters_.dni || "",
       getOptions: opts,
       onSelect: (opt) => {
-        histFilters_.dni = String((opt && (opt.dni || opt.id)) || "").replace(/\D/g, "");
+        const dni = String((opt && (opt.dni || opt.id)) || "").replace(/\D/g, "");
+        histFilters_.dni = dni;
+        histEvalUserCleared_ = !dni;
         syncHistFilterLabels_();
         if (state.screen === "historial") renderHistorial();
       },
@@ -2940,7 +3014,7 @@ QB.App = (() => {
     const today = todayISO_();
     if (!histFilters_.desde) histFilters_.desde = today;
     if (!histFilters_.hasta) histFilters_.hasta = today;
-    if (!histFilters_.dni && session && session.dni) {
+    if (!histEvalUserCleared_ && !histFilters_.dni && session && session.dni) {
       histFilters_.dni = String(session.dni).replace(/\D/g, "");
     }
     populateHistFilterOptions_();
@@ -2951,21 +3025,25 @@ QB.App = (() => {
     if (!navigator.onLine) return false;
     if (remoteHistBusy_) return false;
     readHistFiltersFromUi_();
-    if (!force && remoteHistCache_ && Date.now() - remoteHistFetchAt_ < 45000) {
+    if (
+      !force &&
+      remoteHistFetchAt_ &&
+      Date.now() - remoteHistFetchAt_ < 45000 &&
+      Array.isArray(remoteHistCache_)
+    ) {
       return true;
     }
     remoteHistBusy_ = true;
     try {
       const f = histFilters_;
-      const campana = defaultCampana_();
+      // No filtrar por campaña en el GET: muchas filas viejas la tienen vacía y el resumen salía en 0
       const data = await QB.API.fetchProyeccionesList({
         limit: 2000,
-        campana,
         dni: f.dni || undefined,
         modulo: f.modulo || undefined,
         desde: f.desde || undefined,
         hasta: f.hasta || undefined,
-        timeoutMs: 28000,
+        timeoutMs: 45000,
       });
       if (!data || !data.ok) return false;
       const mapped = QB.API.sheetRegistrosToHistory
@@ -2988,17 +3066,18 @@ QB.App = (() => {
     const needsNet =
       (f.desde && f.desde !== today) ||
       (f.hasta && f.hasta !== today) ||
-      (f.desde && f.hasta && f.desde !== f.hasta);
+      (f.desde && f.hasta && f.desde !== f.hasta) ||
+      !!f.dni ||
+      !!f.modulo;
     if (needsNet && !navigator.onLine) {
-      toast("Las fechas requieren internet para traer datos", "warn");
+      toast("Los filtros requieren internet para traer datos", "warn");
       return;
     }
-    if (!navigator.onLine && needsNet) return;
-    setLoader(true, needsNet || navigator.onLine ? "Trayendo datos…" : "Filtrando…");
+    setLoader(true, navigator.onLine ? "Trayendo datos…" : "Filtrando…");
     try {
       if (navigator.onLine) {
         const ok = await refreshRemoteHistorial_(true);
-        if (!ok && needsNet) {
+        if (!ok) {
           toast("No se pudo traer datos. Revisa la conexión", "warn");
         }
       }
@@ -3150,27 +3229,38 @@ QB.App = (() => {
     return filterHistorialByFilters_(history);
   }
 
-  /** Última cartilla por módulo+turno+lote (no mezclar envíos viejos). */
+  function histLoteNum_(h, enriched) {
+    const n = String(
+      (enriched && enriched.loteNum) ||
+        (h && h.loteNum) ||
+        ""
+    ).trim();
+    if (n) return n;
+    const code = String(
+      (enriched && enriched.loteCode) || (h && (h.loteCode || h.lote)) || ""
+    ).trim();
+    const m =
+      code.match(/L(?:T)?\s*([0-9]+[A-Za-z]?)\s*$/i) ||
+      code.match(/(?:^|[^\d])([0-9]+[A-Za-z]?)$/);
+    return m ? m[1] : code || "—";
+  }
+
+  /**
+   * Filas KG por módulo+turno+N° lote.
+   * Si hay 2+ registros del mismo lote → promedio ponderado por N° muestras.
+   */
   function buildKgRows_(history) {
     const stages = QB.HIST_KG_STAGES || [];
-    const latest = new Map();
+    const byKey = new Map();
     (history || []).forEach((h) => {
       const enriched = enrichHistRow_(h, h.status === "pending" ? "pending" : "sent");
       const mod = enriched.modulo || "—";
       const tur = String(enriched.turno || "—");
-      const lote = enriched.loteCode || h.lote || h.loteCode || "—";
-      const key = `${mod}|${tur}|${lote}`;
+      const loteNum = histLoteNum_(h, enriched);
+      const loteCode = enriched.loteCode || h.lote || h.loteCode || "";
+      const key = `${mod}|${tur}|${loteNum}`;
       const at = new Date(h.at || 0).getTime() || 0;
-      const prev = latest.get(key);
-      if (prev && prev.at >= at) return;
-      const kgs = stages.map((st) => {
-        const avg = avgStage_(h.samples || [], st.id);
-        const avg2 = avg != null ? avg : avgStage_(h.samples || [], st.sheet);
-        return stageKg_(avg2, enriched.area);
-      });
-      const total = kgs.reduce((a, b) => a + b, 0);
       const samples = h.samples || [];
-      // N° Muestra = cantidad de filas/muestras de la cartilla (denominador del promedio)
       let nMuestras = samples.length;
       const declared = Number(h.sampleCount);
       if (Number.isFinite(declared) && declared > nMuestras) nMuestras = declared;
@@ -3179,7 +3269,6 @@ QB.App = (() => {
         if (Number.isFinite(nn) && nn > nMuestras) nMuestras = nn;
       });
       if (!nMuestras) nMuestras = 0;
-      // Promedio = suma(valores) / N° muestras (vacío cuenta como 0)
       const stageAvgPack_ = (id) => {
         let sum = 0;
         const keys = stageFieldKeys_(id);
@@ -3206,26 +3295,69 @@ QB.App = (() => {
       const a3 = stageAvgPack_("e3");
       const a4 = stageAvgPack_("e4");
       const a5 = stageAvgPack_("e5");
-      // Total = suma de promedios E1+E2+E3+E4+E5 (ya no kg)
+      const prev = byKey.get(key);
+      if (prev) {
+        // 2+ registros del mismo lote → acumula sumas / muestras (promedio)
+        prev.sampleCount = (Number(prev.sampleCount) || 0) + nMuestras;
+        prev.e1Sum = (Number(prev.e1Sum) || 0) + (Number(a1.sum) || 0);
+        prev.e2Sum = (Number(prev.e2Sum) || 0) + (Number(a2.sum) || 0);
+        prev.e3Sum = (Number(prev.e3Sum) || 0) + (Number(a3.sum) || 0);
+        prev.e4Sum = (Number(prev.e4Sum) || 0) + (Number(a4.sum) || 0);
+        prev.e5Sum = (Number(prev.e5Sum) || 0) + (Number(a5.sum) || 0);
+        prev.e1N = prev.sampleCount;
+        prev.e2N = prev.sampleCount;
+        prev.e3N = prev.sampleCount;
+        prev.e4N = prev.sampleCount;
+        prev.e5N = prev.sampleCount;
+        const n = prev.sampleCount;
+        prev.e1Avg = n > 0 ? prev.e1Sum / n : null;
+        prev.e2Avg = n > 0 ? prev.e2Sum / n : null;
+        prev.e3Avg = n > 0 ? prev.e3Sum / n : null;
+        prev.e4Avg = n > 0 ? prev.e4Sum / n : null;
+        prev.e5Avg = n > 0 ? prev.e5Sum / n : null;
+        prev.total =
+          (Number(prev.e1Avg) || 0) +
+          (Number(prev.e2Avg) || 0) +
+          (Number(prev.e3Avg) || 0) +
+          (Number(prev.e4Avg) || 0) +
+          (Number(prev.e5Avg) || 0);
+        prev.regCount = (Number(prev.regCount) || 1) + 1;
+        if (at >= prev.at) {
+          prev.at = at;
+          prev.clientId = h.clientId || prev.clientId;
+          prev.lote = loteCode || prev.lote;
+          prev.fecha = enriched.fecha || h.fecha || prev.fecha;
+          if (enriched.area != null && enriched.area !== "") prev.area = enriched.area;
+        }
+        return;
+      }
       const totalE =
         (Number(a1.avg) || 0) +
         (Number(a2.avg) || 0) +
         (Number(a3.avg) || 0) +
         (Number(a4.avg) || 0) +
         (Number(a5.avg) || 0);
-      latest.set(key, {
+      const kgs = stages.map((st) => {
+        const avg = avgStage_(samples, st.id);
+        const avg2 = avg != null ? avg : avgStage_(samples, st.sheet);
+        return stageKg_(avg2, enriched.area);
+      });
+      byKey.set(key, {
         id: key,
         clientId: h.clientId || "",
         mod,
         tur,
-        lote,
+        lote: loteCode || loteNum,
+        loteNum,
+        loteLabel: `Lote ${loteNum}`,
         area: enriched.area,
         status: enriched.status,
         at,
         fecha: enriched.fecha || h.fecha || "",
         sampleCount: nMuestras,
+        regCount: 1,
         kgs,
-        totalKg: total,
+        totalKg: kgs.reduce((a, b) => a + b, 0),
         total: totalE,
         e1Avg: a1.avg,
         e1N: a1.n,
@@ -3249,12 +3381,16 @@ QB.App = (() => {
         peso: histPeso_(),
       });
     });
-    return [...latest.values()].sort((a, b) => {
+    return [...byKey.values()].sort((a, b) => {
       const cm = String(a.mod).localeCompare(String(b.mod), "es");
       if (cm) return cm;
-      const ct = String(a.tur).localeCompare(String(b.tur), "es");
-      if (ct) return ct;
-      return String(a.lote).localeCompare(String(b.lote), "es");
+      const na = Number(a.tur) || 0;
+      const nb = Number(b.tur) || 0;
+      if (na !== nb) return na - nb;
+      const la = Number(String(a.loteNum).replace(/\D/g, "")) || 0;
+      const lb = Number(String(b.loteNum).replace(/\D/g, "")) || 0;
+      if (la !== lb) return la - lb;
+      return String(a.loteNum).localeCompare(String(b.loteNum), "es");
     });
   }
 
@@ -3281,11 +3417,13 @@ QB.App = (() => {
     const sub = $("#qb-kg-detail-sub");
     const body = $("#qb-kg-detail-body");
     if (!root || !title || !body) return;
-    title.textContent = row.lote || "Lote";
+    title.textContent = row.loteLabel || (row.loteNum ? `Lote ${row.loteNum}` : row.lote) || "Lote";
     if (sub) {
       sub.textContent = `${row.mod} · Turno ${row.tur} · Peso ${fmtNum_(row.peso, 2)} g${
         row.area != null ? ` · Área ${fmtNum_(row.area, 2)} ha` : ""
-      }${row.sampleCount ? ` · ${row.sampleCount} muestra${row.sampleCount === 1 ? "" : "s"}` : ""}`;
+      }${row.sampleCount ? ` · ${row.sampleCount} muestra${row.sampleCount === 1 ? "" : "s"}` : ""}${
+        row.regCount > 1 ? ` · ${row.regCount} registros (promedio)` : ""
+      }`;
     }
     body.innerHTML = `
       <ul class="qb-kg-detail-list">
@@ -3366,11 +3504,7 @@ QB.App = (() => {
     const bodyRows = [];
     const mods = [...byMod.keys()].sort((a, b) => String(a).localeCompare(String(b), "es"));
     mods.forEach((mod) => {
-      const lotes = (byMod.get(mod) || []).slice().sort((a, b) => {
-        const ct = String(a.tur).localeCompare(String(b.tur), "es");
-        if (ct) return ct;
-        return String(a.lote).localeCompare(String(b.lote), "es");
-      });
+      const lotes = byMod.get(mod) || [];
       let m1 = 0;
       let m2 = 0;
       let m3 = 0;
@@ -3378,7 +3512,8 @@ QB.App = (() => {
       let m5 = 0;
       let mN = 0;
       const groupId = String(mod);
-      const loteRows = lotes.map((L) => {
+      const byTur = new Map();
+      lotes.forEach((L) => {
         const n = Number(L.sampleCount) || Number(L.e2N) || 0;
         mN += n;
         m1 += Number(L.e1Sum) || 0;
@@ -3386,27 +3521,80 @@ QB.App = (() => {
         m3 += Number(L.e3Sum) || 0;
         m4 += Number(L.e4Sum) || 0;
         m5 += Number(L.e5Sum) || 0;
-        return `<tr class="lote-row is-collapsed" data-mod-group="${escapeAttr(groupId)}" hidden>
-            <td><span class="lote-tur">T${escapeHtml(L.tur)}</span> ${escapeHtml(L.lote)}</td>
+        const tur = String(L.tur || "—");
+        if (!byTur.has(tur)) byTur.set(tur, []);
+        byTur.get(tur).push(L);
+      });
+      const turKeys = [...byTur.keys()].sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
+      const turBlocks = turKeys
+        .map((tur) => {
+          const turLotes = (byTur.get(tur) || []).slice().sort((a, b) => {
+            const la = Number(String(a.loteNum).replace(/\D/g, "")) || 0;
+            const lb = Number(String(b.loteNum).replace(/\D/g, "")) || 0;
+            return la - lb || String(a.loteNum).localeCompare(String(b.loteNum), "es");
+          });
+          let t1 = 0;
+          let t2 = 0;
+          let t3 = 0;
+          let t4 = 0;
+          let t5 = 0;
+          let tN = 0;
+          const turId = `${groupId}|${tur}`;
+          const loteRows = turLotes
+            .map((L) => {
+              const n = Number(L.sampleCount) || Number(L.e2N) || 0;
+              tN += n;
+              t1 += Number(L.e1Sum) || 0;
+              t2 += Number(L.e2Sum) || 0;
+              t3 += Number(L.e3Sum) || 0;
+              t4 += Number(L.e4Sum) || 0;
+              t5 += Number(L.e5Sum) || 0;
+              const label = L.loteLabel || `Lote ${L.loteNum || L.lote || "—"}`;
+              return `<tr class="lote-row is-collapsed" data-mod-group="${escapeAttr(
+                groupId
+              )}" data-tur-group="${escapeAttr(turId)}" hidden>
+            <td>${escapeHtml(label)}</td>
             ${promCell_(L.e2Avg)}${promCell_(L.e3Avg)}${promCell_(L.e4Avg)}${promCell_(L.e5Avg)}
             ${totalCell_(L.total)}
           </tr>`;
-      });
+            })
+            .join("");
+          const turP1 = promByMuestras_(t1, tN);
+          const turP2 = promByMuestras_(t2, tN);
+          const turP3 = promByMuestras_(t3, tN);
+          const turP4 = promByMuestras_(t4, tN);
+          const turP5 = promByMuestras_(t5, tN);
+          const turTot = sumE1aE5_(turP1, turP2, turP3, turP4, turP5);
+          return `<tr class="tur-row is-accordion is-collapsed" data-mod-group="${escapeAttr(
+            groupId
+          )}" data-tur-toggle="${escapeAttr(turId)}" aria-expanded="false" hidden>
+          <td><span class="mod-caret" aria-hidden="true">▸</span> T${escapeHtml(
+            tur
+          )} <em class="mod-count">${turLotes.length} lote${
+            turLotes.length === 1 ? "" : "s"
+          } · ${tN} mues.</em></td>
+          ${promCell_(turP2)}${promCell_(turP3)}${promCell_(turP4)}${promCell_(turP5)}
+          ${totalCell_(turTot)}
+        </tr>${loteRows}`;
+        })
+        .join("");
+
       const modP1 = promByMuestras_(m1, mN);
       const modP2 = promByMuestras_(m2, mN);
       const modP3 = promByMuestras_(m3, mN);
       const modP4 = promByMuestras_(m4, mN);
       const modP5 = promByMuestras_(m5, mN);
       const modTot = sumE1aE5_(modP1, modP2, modP3, modP4, modP5);
-      // Arriba (fila módulo): promedio E2–E5; Total = E1+…+E5
       bodyRows.push(
         `<tr class="mod-row is-accordion" data-mod-toggle="${escapeAttr(groupId)}" aria-expanded="false">
           <td><span class="mod-caret" aria-hidden="true">▸</span> ${escapeHtml(mod)} <em class="mod-count">${
           lotes.length
-        } lote${lotes.length === 1 ? "" : "s"} · ${mN} mues.</em></td>
+        } lote${lotes.length === 1 ? "" : "s"} · ${turKeys.length} turno${
+          turKeys.length === 1 ? "" : "s"
+        } · ${mN} mues.</em></td>
           ${promCell_(modP2)}${promCell_(modP3)}${promCell_(modP4)}${promCell_(modP5)}
           ${totalCell_(modTot)}
-        </tr>${loteRows.join("")}`
+        </tr>${turBlocks}`
       );
     });
 
@@ -3437,7 +3625,7 @@ QB.App = (() => {
     </table>
     <p class="hist-kg-foot">${rows.length} lote${rows.length === 1 ? "" : "s"} · ${gN} muestra${
       gN === 1 ? "" : "s"
-    } · toca un módulo</p>`;
+    } · toca módulo · luego turno</p>`;
 
     listEl.querySelectorAll("[data-mod-toggle]").forEach((tr) => {
       tr.addEventListener("click", (e) => {
@@ -3449,8 +3637,37 @@ QB.App = (() => {
         const next = !open;
         tr.setAttribute("aria-expanded", next ? "true" : "false");
         tr.classList.toggle("is-open", next);
-        listEl.querySelectorAll("tr.lote-row[data-mod-group]").forEach((row) => {
+        listEl.querySelectorAll("tr.tur-row[data-mod-group]").forEach((row) => {
           if (row.getAttribute("data-mod-group") !== gid) return;
+          row.hidden = !next;
+          row.classList.toggle("is-collapsed", !next);
+          if (!next) {
+            row.setAttribute("aria-expanded", "false");
+            row.classList.remove("is-open");
+          }
+        });
+        if (!next) {
+          listEl.querySelectorAll("tr.lote-row[data-mod-group]").forEach((row) => {
+            if (row.getAttribute("data-mod-group") !== gid) return;
+            row.hidden = true;
+            row.classList.add("is-collapsed");
+          });
+        }
+      });
+    });
+
+    listEl.querySelectorAll("[data-tur-toggle]").forEach((tr) => {
+      tr.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (Date.now() < historialReadyAt_) return;
+        const tid = tr.getAttribute("data-tur-toggle");
+        const open = tr.getAttribute("aria-expanded") === "true";
+        const next = !open;
+        tr.setAttribute("aria-expanded", next ? "true" : "false");
+        tr.classList.toggle("is-open", next);
+        listEl.querySelectorAll("tr.lote-row[data-tur-group]").forEach((row) => {
+          if (row.getAttribute("data-tur-group") !== tid) return;
           row.hidden = !next;
           row.classList.toggle("is-collapsed", !next);
         });
