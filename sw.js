@@ -1,5 +1,5 @@
 /* Q Berries Fenología — Service Worker (estabilidad: sin reinicio forzado) */
-const CACHE = "qb-proyecciones-v105";
+const CACHE = "qb-proyecciones-v106";
 const ASSETS = [
   "./",
   "./index.html",

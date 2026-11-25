@@ -1365,7 +1365,7 @@ QB.App = (() => {
           const cells = fields
             .map((f) => {
               const v = s[f.id];
-              const show = v === "" || v == null ? "—" : escapeHtml(v);
+              const show = escapeHtml(displayFieldVal_(v));
               const full = f.id === "e5" ? " is-full" : "";
               return `<div class="resumen-cell${full}"><em>${escapeHtml(f.label)}</em><b>${show}</b></div>`;
             })
@@ -2529,8 +2529,7 @@ QB.App = (() => {
         const num = s && s.n != null ? s.n : start + i + 1;
         const rows = fields
           .map((f) => {
-            const raw =
-              s && s[f.id] != null && String(s[f.id]).trim() !== "" ? s[f.id] : "—";
+            const raw = displayFieldVal_(s ? s[f.id] : "");
             return `<li><span>${escapeHtml(f.label || f.id)}</span><strong>${escapeHtml(
               String(raw)
             )}</strong></li>`;
@@ -3062,8 +3061,24 @@ QB.App = (() => {
     };
   }
 
+  /** 0 / 0.0 / "0,0" → true (para UI; el promedio igual usa el 0). */
+  function isNumericZero_(v) {
+    if (v == null || v === "") return false;
+    const n = Number(String(v).trim().replace(",", "."));
+    return Number.isFinite(n) && n === 0;
+  }
+
+  /** Vacío o cero → "—"; el valor real se conserva para cálculos. */
+  function displayFieldVal_(v) {
+    if (v == null || String(v).trim() === "") return "—";
+    if (isNumericZero_(v)) return "—";
+    return String(v);
+  }
+
   function fmtNum_(n, dec) {
     if (n == null || !Number.isFinite(n)) return "—";
+    // En historial: promedio 0.0 se ve como —; el cálculo ya usó el 0
+    if (n === 0) return "—";
     return Number(n).toLocaleString("es-PE", {
       minimumFractionDigits: dec,
       maximumFractionDigits: dec,
