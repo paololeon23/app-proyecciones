@@ -6,7 +6,7 @@ QB.CONFIG = {
   _ep: "",
   API_URL: "https://script.google.com/macros/s/AKfycbxxLAKdchGStfg2IIkaeJKgDdsRgTf9-s-jg3cYz6k2dgZcaJj-54CFLgwPled2fr24/exec",
   APP_NAME: "Q Berries · Fenología",
-  VERSION: "1.8.15",
+  VERSION: "1.8.17",
   PUBLIC_URL: "https://app-proyecciones.netlify.app",
   /** Muestras iniciales al crear cartilla (se pueden agregar más en campo) */
   SAMPLE_START: 1,

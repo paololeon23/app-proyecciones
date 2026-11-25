@@ -1,5 +1,5 @@
-/* Q Berries Proyecciones — Service Worker */
-const CACHE = "qb-proyecciones-v96";
+/* Q Berries Fenología — Service Worker (estabilidad: sin reinicio forzado) */
+const CACHE = "qb-proyecciones-v98";
 const ASSETS = [
   "./",
   "./index.html",
@@ -38,17 +38,31 @@ function isShellRequest_(url) {
   );
 }
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+/** Precarga assets uno a uno: un fallo no tumba toda la instalación del SW */
+function precacheAll_(cache) {
+  return Promise.all(
+    ASSETS.map((url) =>
+      cache.add(url).catch(() => {
+        /* ignore missing asset */
+      })
+    )
   );
+}
+
+self.addEventListener("install", (event) => {
+  // NO skipWaiting automático: evita reiniciar la PWA a mitad de cartilla.
+  // La activación inmediata solo ocurre con mensaje SKIP_WAITING (usuario aceptó).
+  event.waitUntil(caches.open(CACHE).then((cache) => precacheAll_(cache)));
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+      )
+      .then(() => self.clients.claim())
   );
 });
 
@@ -75,7 +89,9 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = (event.notification && event.notification.data && event.notification.data.url) || "./index.html";
+  const target =
+    (event.notification && event.notification.data && event.notification.data.url) ||
+    "./index.html";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (let i = 0; i < clients.length; i++) {
@@ -94,7 +110,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // App shell: red primero para detectar cambios; caché si no hay señal
+  // App shell: red primero; caché si no hay señal (no tumba la app offline)
   if (isShellRequest_(url) || req.mode === "navigate") {
     event.respondWith(
       fetch(req)
@@ -105,7 +121,9 @@ self.addEventListener("fetch", (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then((c) => c || caches.match("./index.html")))
+        .catch(() =>
+          caches.match(req).then((c) => c || caches.match("./index.html"))
+        )
     );
     return;
   }

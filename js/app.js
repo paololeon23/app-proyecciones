@@ -38,17 +38,112 @@ QB.App = (() => {
     return `s_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   }
 
-  function emptySample_() {
+  function emptySample_(locus) {
     const o = {
       sampleId: newSampleId_(),
       observacion: "",
       photoDataUrl: "",
       photoTakenAt: "",
+      turno: "",
+      loteId: "",
+      loteNum: "",
+      loteCode: "",
+      variedad: "",
+      area: "",
+      etapa: "",
     };
     (QB.SAMPLE_FIELDS || []).forEach((f) => {
       o[f.id] = "";
     });
+    if (locus) stampSampleLocus_(o, locus);
     return o;
+  }
+
+  /** Fundo I–IV de la cartilla (para filtrar turnos/lotes del mismo módulo). */
+  function cartillaFundoId_(c) {
+    if (!c) return "";
+    const id = String(c.fundoId || "").trim().toUpperCase();
+    if (id === "I" || id === "II" || id === "III" || id === "IV") return id;
+    const e = String(c.fundo || c.etapa || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, " ");
+    if (!e) return "";
+    if (/\bIV\b/.test(e) || e.includes("LICAPA IV")) return "IV";
+    if (/\bIII\b/.test(e) || e.includes("LICAPA III")) return "III";
+    if (e.includes("I/II") || e.includes("I / II")) return "I";
+    if (/\bII\b/.test(e) || e.includes("LICAPA II")) return "II";
+    if (/\bI\b/.test(e) || e.includes("LICAPA I")) return "I";
+    return "";
+  }
+
+  function locusFromCartilla_(c) {
+    if (!c) return null;
+    return {
+      turno: String(c.turno || ""),
+      loteId: String(c.loteId || ""),
+      loteNum: String(c.loteNum || ""),
+      loteCode: String(c.loteCode || ""),
+      variedad: String(c.variedad || ""),
+      area: c.area != null && c.area !== "" ? c.area : "",
+      etapa: String(c.etapa || c.fundo || ""),
+    };
+  }
+
+  function stampSampleLocus_(sample, locus) {
+    if (!sample || !locus) return sample;
+    sample.turno = String(locus.turno || "");
+    sample.loteId = String(locus.loteId || "");
+    sample.loteNum = String(locus.loteNum || "");
+    sample.loteCode = String(locus.loteCode || "");
+    sample.variedad = String(locus.variedad || "");
+    sample.area = locus.area != null && locus.area !== "" ? locus.area : "";
+    sample.etapa = String(locus.etapa || "");
+    return sample;
+  }
+
+  function sampleLocusOrCartilla_(sample, cartilla) {
+    if (sample && String(sample.loteCode || sample.turno || "").trim()) {
+      return {
+        turno: String(sample.turno || cartilla.turno || ""),
+        loteId: String(sample.loteId || cartilla.loteId || ""),
+        loteNum: String(sample.loteNum || cartilla.loteNum || ""),
+        loteCode: String(sample.loteCode || cartilla.loteCode || ""),
+        variedad: String(sample.variedad || cartilla.variedad || ""),
+        area:
+          sample.area != null && sample.area !== ""
+            ? sample.area
+            : cartilla.area != null && cartilla.area !== ""
+              ? cartilla.area
+              : "",
+        etapa: String(sample.etapa || cartilla.etapa || cartilla.fundo || ""),
+      };
+    }
+    return locusFromCartilla_(cartilla);
+  }
+
+  function applyLocusToCartilla_(c, meta) {
+    if (!c || !meta) return;
+    const turno = String(meta.turno ?? c.turno ?? "").trim();
+    const loteNum = String(meta.lote ?? meta.loteNum ?? c.loteNum ?? "").trim();
+    const loteId = String(meta.id || meta.codLote || meta.loteId || c.loteId || "").trim();
+    const code =
+      QB.Data.formatLoteCode({
+        modulo: c.modulo,
+        turno,
+        lote: loteNum,
+        codLote: loteId,
+      }) || String(meta.codLote || loteId || c.loteCode || "");
+    c.turno = turno;
+    c.loteId = loteId;
+    c.loteNum = loteNum;
+    c.loteCode = code;
+    if (meta.variedad != null) c.variedad = meta.variedad || "";
+    if (meta.area != null && meta.area !== "") c.area = meta.area;
+    if (meta.etapa) {
+      c.etapa = String(meta.etapa);
+      if (!c.fundo) c.fundo = String(meta.etapa);
+    }
   }
 
   const PESO_PREF_KEY = "qb_proy_peso_baya";
@@ -60,15 +155,19 @@ QB.App = (() => {
     }
     // Migrar observación vieja (de cartilla) a cada muestra si aún no tiene
     const legacy = String(cartilla.observacion || "").trim();
+    const locus = locusFromCartilla_(cartilla);
     cartilla.samples.forEach((s, i) => {
       if (!s || typeof s !== "object") {
-        cartilla.samples[i] = emptySample_();
+        cartilla.samples[i] = emptySample_(locus);
         return;
       }
       if (!s.sampleId) s.sampleId = newSampleId_();
       if (s.observacion == null) s.observacion = "";
       if (s.photoDataUrl == null) s.photoDataUrl = "";
       if (s.photoTakenAt == null) s.photoTakenAt = "";
+      if (!String(s.loteCode || s.turno || "").trim() && locus) {
+        stampSampleLocus_(s, locus);
+      }
       if (!String(s.observacion).trim() && legacy && i === 0) {
         s.observacion = legacy;
       }
@@ -102,29 +201,33 @@ QB.App = (() => {
   }
 
   function emptyCartilla_(partial) {
-    const n = SAMPLE_START();
-    const samples = [];
-    for (let i = 0; i < n; i++) samples.push(emptySample_());
-    return {
+    const base = {
       clientId: null,
       fecha: todayISO_(),
       evaluadorId: "",
       evaluadorNombre: "",
       cartillaId: "proyecciones",
       cartillaLabel: "Fenología",
+      fundoId: "",
       modulo: "",
       turno: "",
       loteId: "",
       loteNum: "",
       loteCode: "",
       etapa: "",
+      fundo: "",
       variedad: "",
       area: "",
       campana: "",
       observacion: "",
-      samples,
       ...(partial || {}),
     };
+    const n = SAMPLE_START();
+    const locus = locusFromCartilla_(base);
+    const samples = [];
+    for (let i = 0; i < n; i++) samples.push(emptySample_(locus));
+    base.samples = samples;
+    return base;
   }
 
   /** Campaña = año calendario Lima. Al pasar a 2027 cambia sola. */
@@ -523,11 +626,42 @@ QB.App = (() => {
 
   function saveDraft_() {
     try {
-      if (!state.cartilla || state.screen !== "cartilla") return;
+      // Guardar en cartilla O resumen (no perder datos al minimizar / cortar app)
+      if (!state.cartilla) return;
+      if (state.screen !== "cartilla" && state.screen !== "resumen") return;
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ cartilla: state.cartilla, muestraIndex: state.muestraIndex, at: Date.now() })
+        JSON.stringify({
+          cartilla: state.cartilla,
+          muestraIndex: state.muestraIndex,
+          screen: state.screen,
+          at: Date.now(),
+        })
       );
+    } catch (_) {}
+  }
+
+  /** Persistencia inmediata (SW update / pagehide / background) */
+  function persistNow_() {
+    try {
+      saveDraft_();
+    } catch (_) {}
+  }
+
+  function hasWorkInProgress_() {
+    if (state.cartilla) return true;
+    try {
+      if (loadDraft_()) return true;
+    } catch (_) {}
+    try {
+      if (QB.API && QB.API.pendingCount && QB.API.pendingCount() > 0) return true;
+    } catch (_) {}
+    return false;
+  }
+
+  function toastSoft_(msg, type) {
+    try {
+      toast(msg, type || "info");
     } catch (_) {}
   }
 
@@ -1027,11 +1161,23 @@ QB.App = (() => {
   async function revisarAccesoDni_(dni, opts) {
     const id = String(dni || "").replace(/\D/g, "");
     if (!/^\d{8}$/.test(id) || !QB.API.checkAcceso) return true;
-    const res = await QB.API.checkAcceso(id);
+    let res;
+    try {
+      res = await QB.API.checkAcceso(id);
+    } catch (_) {
+      return true; // fallo de red/JS: no tumbar sesión
+    }
     if (!res || res.offline || res.activo == null) return true;
     if (res.activo === true) return true;
     toast("Sin acceso. Este DNI está desactivado.", "warn");
-    if (opts && opts.clear) logout_("Sin acceso. Este DNI está desactivado.");
+    if (opts && opts.clear) {
+      // No expulsar a mitad de cartilla/borrador: primero que guarde
+      if (state.cartilla || loadDraft_()) {
+        toast("Termina y guarda tu cartilla. Luego se cerrará el acceso.", "warn");
+        return false;
+      }
+      logout_("Sin acceso. Este DNI está desactivado.");
+    }
     return false;
   }
 
@@ -1093,6 +1239,7 @@ QB.App = (() => {
       cartillaId: c.cartillaId,
       cartillaLabel: c.cartillaLabel || "Fenología",
       campana,
+      fundoId: String(c.fundoId || ""),
       modulo: QB.Data.normalizeModulo(meta.modulo || c.modulo),
       turno: String(meta.turno || c.turno),
       loteId: c.loteId,
@@ -1143,12 +1290,11 @@ QB.App = (() => {
     if (metaEl) {
       metaEl.innerHTML = `
         <div class="resumen-meta-main">
-          <p class="resumen-meta-kicker">Ubicación</p>
-          <strong class="resumen-meta-lote">${escapeHtml(c.loteCode || "—")}</strong>
+          <p class="resumen-meta-kicker">Ubicación · módulo fijo</p>
+          <strong class="resumen-meta-lote">${escapeHtml(c.modulo || "—")}</strong>
           <div class="resumen-meta-row">
             <span><em>Módulo</em><b>${escapeHtml(c.modulo || "—")}</b></span>
-            <span><em>Turno</em><b>${escapeHtml(c.turno || "—")}</b></span>
-            <span><em>Lote</em><b>${escapeHtml(c.loteNum || "—")}</b></span>
+            <span><em>Activo</em><b>${escapeHtml(c.loteCode || "—")}</b></span>
           </div>
         </div>
         <div class="resumen-meta-side">
@@ -1160,6 +1306,7 @@ QB.App = (() => {
     if (listEl) {
       listEl.innerHTML = samples
         .map((s, i) => {
+          const loc = sampleLocusOrCartilla_(s, c);
           const cells = fields
             .map((f) => {
               const v = s[f.id];
@@ -1170,7 +1317,14 @@ QB.App = (() => {
             .join("");
           const sampleObs = String(s.observacion || "").trim();
           return `<article class="resumen-sample">
-            <header><span>Muestra</span><strong>${i + 1}</strong></header>
+            <header>
+              <span>Muestra ${i + 1}</span>
+              <strong>${escapeHtml(loc.loteCode || "—")}</strong>
+            </header>
+            <div class="resumen-meta-row" style="margin:6px 0 10px">
+              <span><em>Turno</em><b>${escapeHtml(loc.turno || "—")}</b></span>
+              <span><em>Lote</em><b>${escapeHtml(loc.loteNum || "—")}</b></span>
+            </div>
             <div class="resumen-grid">${cells}</div>
             <div class="resumen-sample-obs"><em>Observación</em><b>${
               sampleObs ? escapeHtml(sampleObs) : "—"
@@ -1231,6 +1385,103 @@ QB.App = (() => {
     renderCartilla();
   }
 
+  function renderCartillaLocusBar_(c, sample) {
+    const loc = sampleLocusOrCartilla_(sample, c) || locusFromCartilla_(c);
+    const codeEl = $("#cartilla-locus-code");
+    const turnoBtn = $("#btn-cartilla-turno");
+    const loteBtn = $("#btn-cartilla-lote");
+    if (codeEl) codeEl.textContent = loc.loteCode || c.loteCode || "—";
+    if (turnoBtn) {
+      const t = String(loc.turno || c.turno || "").trim();
+      turnoBtn.textContent = t ? `Turno ${t}` : "Turno";
+      turnoBtn.classList.toggle("is-empty", !t);
+    }
+    if (loteBtn) {
+      const l = String(loc.loteNum || c.loteNum || "").trim();
+      loteBtn.textContent = l ? `Lote ${l}` : "Lote";
+      loteBtn.classList.toggle("is-empty", !l);
+    }
+  }
+
+  function openCartillaTurnoSelect_() {
+    const c = state.cartilla;
+    if (!c || !QB.PreciseSelect) return;
+    if (!c.modulo) {
+      toast("Sin módulo en la cartilla", "warn");
+      return;
+    }
+    const fundoId = cartillaFundoId_(c);
+    QB.PreciseSelect.open({
+      title: "Seleccionar turno",
+      hideSearch: true,
+      value: String(c.turno || ""),
+      getOptions: (q) => QB.Data.turnoOptions(c.modulo, q, fundoId),
+      onSelect: (opt) => {
+        if (!opt) return;
+        const nextTurno = String(opt.id || "").trim();
+        if (!nextTurno) return;
+        const changed = String(c.turno || "") !== nextTurno;
+        c.turno = nextTurno;
+        if (changed) {
+          c.loteId = "";
+          c.loteNum = "";
+          c.loteCode = "";
+          c.variedad = "";
+          c.area = "";
+        }
+        const sample = ensureSampleObj_();
+        if (sample) stampSampleLocus_(sample, locusFromCartilla_(c));
+        renderCartilla();
+        saveDraft_();
+        if (changed) {
+          toast("Elige el lote para este turno", "warn");
+          setTimeout(() => openCartillaLoteSelect_(), 180);
+        }
+      },
+    });
+  }
+
+  function openCartillaLoteSelect_() {
+    const c = state.cartilla;
+    if (!c || !QB.PreciseSelect) return;
+    if (!c.modulo) {
+      toast("Sin módulo en la cartilla", "warn");
+      return;
+    }
+    if (!c.turno) {
+      toast("Selecciona turno primero", "warn");
+      return;
+    }
+    const fundoId = cartillaFundoId_(c);
+    QB.PreciseSelect.open({
+      title: "Seleccionar lote",
+      hideSearch: true,
+      value: String(c.loteId || ""),
+      getOptions: (q) => QB.Data.lotesForModuloTurno(c.modulo, c.turno, q, fundoId),
+      onSelect: (opt) => {
+        if (!opt) return;
+        const meta = opt.raw || QB.Data.loteMeta(opt.id) || {
+          id: opt.id,
+          turno: c.turno,
+          lote: String(opt.label || "").replace(/^Lote\s+/i, ""),
+          modulo: c.modulo,
+          codLote: opt.id,
+        };
+        applyLocusToCartilla_(c, {
+          ...meta,
+          id: opt.id,
+          loteId: opt.id,
+          loteNum: meta.lote,
+        });
+        const sample = ensureSampleObj_();
+        if (sample) stampSampleLocus_(sample, locusFromCartilla_(c));
+        renderCartilla();
+        saveDraft_();
+        toast(`Enlazado · ${c.loteCode}`, "ok");
+      },
+    });
+  }
+
   function renderCartilla() {
     const c = state.cartilla;
     if (!c) return;
@@ -1243,16 +1494,18 @@ QB.App = (() => {
     const verEl = $("#cartilla-ver");
     const prevBtn = $("#btn-muestra-prev");
     const nextBtn = $("#btn-muestra-next");
-    if (codeEl) codeEl.value = c.loteCode || "";
-    if (codeSub) codeSub.textContent = c.loteCode || "Nueva cartilla";
+    const sample = c.samples[state.muestraIndex] || emptySample_(locusFromCartilla_(c));
+    const loc = sampleLocusOrCartilla_(sample, c);
+    if (codeEl) codeEl.value = loc.loteCode || c.loteCode || "";
+    if (codeSub) codeSub.textContent = loc.loteCode || c.loteCode || "Nueva cartilla";
     if (numEl) numEl.textContent = `${state.muestraIndex + 1} / ${total}`;
     if (verEl) verEl.textContent = (QB.CONFIG && QB.CONFIG.VERSION) || "1.0";
     if (prevBtn) prevBtn.disabled = state.muestraIndex <= 0;
     if (nextBtn) nextBtn.disabled = state.muestraIndex >= SAMPLE_MAX() - 1 && state.muestraIndex >= total - 1;
+    renderCartillaLocusBar_(c, sample);
 
     const root = $("#cartilla-fields");
     if (!root) return;
-    const sample = c.samples[state.muestraIndex] || emptySample_();
     const fieldsHtml = (QB.SAMPLE_FIELDS || [])
       .map((f) => {
         const val = sample[f.id] != null ? sample[f.id] : "";
@@ -1296,9 +1549,7 @@ QB.App = (() => {
     fieldInputs.forEach((inp, idx) => {
       inp.addEventListener("input", () => {
         const id = inp.dataset.field;
-        if (!state.cartilla.samples[state.muestraIndex]) {
-          state.cartilla.samples[state.muestraIndex] = emptySample_();
-        }
+        ensureSampleObj_();
         state.cartilla.samples[state.muestraIndex][id] = inp.value;
         saveDraft_();
       });
@@ -1312,9 +1563,7 @@ QB.App = (() => {
     const obs = $("#cartilla-obs");
     if (obs) {
       obs.addEventListener("input", () => {
-        if (!state.cartilla.samples[state.muestraIndex]) {
-          state.cartilla.samples[state.muestraIndex] = emptySample_();
-        }
+        ensureSampleObj_();
         state.cartilla.samples[state.muestraIndex].observacion = obs.value;
         saveDraft_();
       });
@@ -1325,7 +1574,9 @@ QB.App = (() => {
   function ensureSampleObj_() {
     if (!state.cartilla) return null;
     if (!state.cartilla.samples[state.muestraIndex]) {
-      state.cartilla.samples[state.muestraIndex] = emptySample_();
+      state.cartilla.samples[state.muestraIndex] = emptySample_(
+        locusFromCartilla_(state.cartilla)
+      );
     }
     return state.cartilla.samples[state.muestraIndex];
   }
@@ -1741,7 +1992,7 @@ QB.App = (() => {
         });
       return;
     }
-      samples.push(emptySample_());
+      samples.push(emptySample_(locusFromCartilla_(state.cartilla)));
     }
     state.muestraIndex = next;
     renderCartilla();
@@ -1758,22 +2009,23 @@ QB.App = (() => {
     const photos = [];
     const horaSubida = limaNowStamp_();
     for (let i = 0; i < samples.length; i++) {
-      const s = samples[i] || emptySample_();
+      const s = samples[i] || emptySample_(locusFromCartilla_(cartilla));
+      const loc = sampleLocusOrCartilla_(s, cartilla);
       const n = i + 1;
       const row = {
-        Lote: cartilla.loteCode || "",
+        Lote: loc.loteCode || cartilla.loteCode || "",
         Fecha: cartilla.fecha || todayISO_(),
         DNI: dni,
         Nombre: nombre,
         "N° Muestra": n,
         Observación: s.observacion || "",
         Modulo: cartilla.modulo || "",
-        Turno: cartilla.turno || "",
-        Lotes: cartilla.loteNum || "",
+        Turno: loc.turno || cartilla.turno || "",
+        Lotes: loc.loteNum || cartilla.loteNum || "",
         Semana: semana,
-        Etapa: cartilla.etapa || "",
-        Variedad: cartilla.variedad || "",
-        Area: cartilla.area || "",
+        Etapa: loc.etapa || cartilla.etapa || "",
+        Variedad: loc.variedad || cartilla.variedad || "",
+        Area: loc.area !== "" && loc.area != null ? loc.area : cartilla.area || "",
         Campaña: normalizeCampana_(cartilla.campana || defaultCampana_()),
         Anexo: "",
         // Siempre: con o sin foto
@@ -3900,6 +4152,8 @@ QB.App = (() => {
     fastTap_($("#btn-back-cartilla"), leaveCartilla);
     fastTap_($("#btn-muestra-prev"), () => switchMuestra(-1));
     fastTap_($("#btn-muestra-next"), () => switchMuestra(1));
+    fastTap_($("#btn-cartilla-turno"), openCartillaTurnoSelect_);
+    fastTap_($("#btn-cartilla-lote"), openCartillaLoteSelect_);
     fastTap_($("#btn-ir-resumen"), irResumen_);
     // Click directo: más fiable en la barra fija del resumen
     const bindResumenBtn_ = (el, fn) => {
@@ -3989,31 +4243,47 @@ QB.App = (() => {
 
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
-        saveDraft_();
-    } else {
-        updateOnlineUi();
-        updatePendingUi();
-        if (navigator.onLine && QB.API.flushQueue) {
-          try { QB.API.flushQueue({ includeOld: true }); } catch (_) {}
-        }
+        persistNow_();
+        return;
+      }
+      updateOnlineUi();
+      updatePendingUi();
+      // Sync suave al volver: no bloquear UI
+      if (navigator.onLine && QB.API && QB.API.flushQueue) {
+        try {
+          QB.API.flushQueue({ soft: true, includeOld: true }).catch(() => {});
+        } catch (_) {}
       }
     });
 
-    window.addEventListener("pageshow", () => {
+    // iOS/Android: al cortar la app o cambiar de pestaña
+    window.addEventListener("pagehide", () => {
+      persistNow_();
+    });
+    window.addEventListener("beforeunload", () => {
+      persistNow_();
+    });
+    document.addEventListener("freeze", () => {
+      persistNow_();
+    });
+
+    window.addEventListener("pageshow", (ev) => {
       const s = requireSession_({ show: true });
       if (!s) return;
       hideLogin_();
       updateOnlineUi();
       updatePendingUi();
-      renderHomeList();
-      revisarAccesoDni_(s.dni, { clear: true });
+      // No saltar a home si el usuario está en cartilla/resumen/historial
+      if (!ev.persisted && state.screen === "home") renderHomeList();
+      // Acceso: no cerrar si hay trabajo en curso
+      revisarAccesoDni_(s.dni, { clear: true }).catch(() => {});
     });
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) return;
       const s = requireSession_({ show: true });
       if (!s) return;
       hideLogin_();
-      revisarAccesoDni_(s.dni, { clear: true });
+      revisarAccesoDni_(s.dni, { clear: true }).catch(() => {});
     });
   }
 
@@ -4051,9 +4321,11 @@ QB.App = (() => {
     renderHomeList();
 
     if (navigator.onLine && QB.API.shouldAutoSync && QB.API.shouldAutoSync()) {
-      QB.API.flushQueue({ includeOld: true });
+      try {
+        QB.API.flushQueue({ soft: true, includeOld: true }).catch(() => {});
+      } catch (_) {}
     }
-    revisarAccesoDni_(session.dni, { clear: true });
+    revisarAccesoDni_(session.dni, { clear: true }).catch(() => {});
   }
 
   if (document.readyState === "loading") {
@@ -4067,5 +4339,8 @@ QB.App = (() => {
     showScreen,
     openCreateModal,
     openCartilla,
+    persistNow: persistNow_,
+    hasWorkInProgress: hasWorkInProgress_,
+    toastSoft: toastSoft_,
   };
 })();

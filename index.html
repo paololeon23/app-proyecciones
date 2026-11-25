@@ -582,6 +582,17 @@
         </div>
       </header>
 
+      <div class="cartilla-locus" id="cartilla-locus" aria-label="Turno y lote de la muestra">
+        <div class="cartilla-locus-code">
+          <span class="cartilla-locus-kicker">Ubicación · mismo módulo</span>
+          <strong id="cartilla-locus-code">—</strong>
+        </div>
+        <div class="cartilla-locus-actions">
+          <button type="button" class="cartilla-locus-btn" id="btn-cartilla-turno" data-placeholder="Turno">Turno</button>
+          <button type="button" class="cartilla-locus-btn" id="btn-cartilla-lote" data-placeholder="Lote">Lote</button>
+        </div>
+      </div>
+
       <div class="muestra-bar">
         <span class="muestra-label">MUESTRA</span>
         <div class="muestra-nav">
@@ -647,12 +658,51 @@
     (function () {
       if (!("serviceWorker" in navigator)) return;
 
+      var UPDATE_MIN_MS = 15 * 60 * 1000; // no martillar update (evita reinicios)
+      var lastUpdateAt = 0;
+
+      function hasWorkInProgress() {
+        try {
+          if (window.QB && QB.App && typeof QB.App.hasWorkInProgress === "function") {
+            return !!QB.App.hasWorkInProgress();
+          }
+        } catch (_) {}
+        try {
+          var draft = localStorage.getItem("qb_proy_draft");
+          if (draft && draft.indexOf("cartilla") !== -1) return true;
+        } catch (_) {}
+        return false;
+      }
+
+      function persistBeforeLeave() {
+        try {
+          if (window.QB && QB.App && typeof QB.App.persistNow === "function") {
+            QB.App.persistNow();
+          }
+        } catch (_) {}
+      }
+
       function askReload(reg) {
         if (!reg || !reg.waiting) return;
         if (window.__qbUpdateAsked) return;
+        // Con cartilla/borrador abierto: no interrumpir; avisar suave
+        if (hasWorkInProgress()) {
+          window.__qbUpdateAsked = true;
+          try {
+            if (window.QB && QB.App && typeof QB.App.toastSoft === "function") {
+              QB.App.toastSoft("Hay una versión nueva. Se aplicará al terminar tu cartilla.", "info");
+            }
+          } catch (_) {}
+          setTimeout(function () {
+            window.__qbUpdateAsked = false;
+          }, 120000);
+          return;
+        }
         window.__qbUpdateAsked = true;
         var go = window.confirm("Hay una versión nueva de Fenología. ¿Actualizar ahora?");
         if (go) {
+          window.__qbUpdateAccepted = true;
+          persistBeforeLeave();
           reg.waiting.postMessage({ type: "SKIP_WAITING" });
         } else {
           window.__qbUpdateAsked = false;
@@ -671,28 +721,46 @@
         });
       }
 
+      // Solo recarga si el usuario ACEPTÓ la actualización (no por claim automático)
       navigator.serviceWorker.addEventListener("controllerchange", function () {
         if (window.__qbReloading) return;
+        if (!window.__qbUpdateAccepted) return;
         window.__qbReloading = true;
+        persistBeforeLeave();
         location.reload();
       });
 
       window.addEventListener("load", function () {
         navigator.serviceWorker.register("./sw.js").then(function (reg) {
           watchReg(reg);
-          function safeUpdate() {
-            // update() es Promise: try/catch no atrapa el fallo (Live Server caído, etc.)
+          function safeUpdate(force) {
+            var now = Date.now();
+            if (!force && now - lastUpdateAt < UPDATE_MIN_MS) return;
+            lastUpdateAt = now;
             try {
               var p = reg.update();
               if (p && typeof p.catch === "function") p.catch(function () {});
             } catch (_) {}
           }
-          setInterval(safeUpdate, 60 * 1000);
+          // Chequeo calmado: 15 min (antes cada 60s provocaba reinicios)
+          setInterval(function () {
+            safeUpdate(false);
+          }, UPDATE_MIN_MS);
           document.addEventListener("visibilitychange", function () {
-            if (!document.hidden) safeUpdate();
+            if (!document.hidden) safeUpdate(false);
           });
-          window.addEventListener("online", safeUpdate);
+          window.addEventListener("online", function () {
+            safeUpdate(true);
+          });
         }).catch(function () {});
+      });
+
+      // Errores JS no deben tumbar ni recargar la PWA
+      window.addEventListener("error", function () {});
+      window.addEventListener("unhandledrejection", function (e) {
+        try {
+          if (e && typeof e.preventDefault === "function") e.preventDefault();
+        } catch (_) {}
       });
     })();
   </script>

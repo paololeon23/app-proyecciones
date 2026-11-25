@@ -4502,6 +4502,68 @@ body.create-modal-open > .form-actions {
   min-width: 2.2em;
   text-align: right;
 }
+/* Barra formal: cambiar Turno/Lote (mismo módulo) sin salir de la cartilla */
+.cartilla-locus {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, #F3F7F4 0%, #FFFFFF 100%);
+  border-bottom: 1px solid rgba(31, 61, 42, 0.08);
+  flex-shrink: 0;
+}
+.cartilla-locus-code {
+  min-width: 0;
+}
+.cartilla-locus-kicker {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--qb-muted);
+  margin-bottom: 2px;
+}
+.cartilla-locus-code strong {
+  display: block;
+  font-size: 0.98rem;
+  font-weight: 850;
+  color: var(--qb-forest);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cartilla-locus-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.cartilla-locus-btn {
+  min-height: 40px;
+  min-width: 72px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(31, 61, 42, 0.16);
+  background: #fff;
+  color: var(--qb-forest);
+  font-weight: 800;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.cartilla-locus-btn.is-empty {
+  color: var(--qb-muted);
+  border-style: dashed;
+}
+.cartilla-locus-btn:active {
+  transform: scale(0.97);
+  background: #F4F7F5;
+}
+
 .muestra-bar {
   display: flex;
   align-items: center;
