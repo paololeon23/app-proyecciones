@@ -103,23 +103,111 @@ QB.App = (() => {
   }
 
   function sampleLocusOrCartilla_(sample, cartilla) {
-    if (sample && String(sample.loteCode || sample.turno || "").trim()) {
+    // Si la muestra ya tiene ubicación sellada, NO mezclar con la cartilla activa
+    if (sample && String(sample.loteCode || "").trim()) {
       return {
-        turno: String(sample.turno || cartilla.turno || ""),
-        loteId: String(sample.loteId || cartilla.loteId || ""),
-        loteNum: String(sample.loteNum || cartilla.loteNum || ""),
-        loteCode: String(sample.loteCode || cartilla.loteCode || ""),
-        variedad: String(sample.variedad || cartilla.variedad || ""),
-        area:
-          sample.area != null && sample.area !== ""
-            ? sample.area
-            : cartilla.area != null && cartilla.area !== ""
-              ? cartilla.area
-              : "",
-        etapa: String(sample.etapa || cartilla.etapa || cartilla.fundo || ""),
+        turno: String(sample.turno || ""),
+        loteId: String(sample.loteId || ""),
+        loteNum: String(sample.loteNum || ""),
+        loteCode: String(sample.loteCode || ""),
+        variedad: String(sample.variedad || ""),
+        area: sample.area != null && sample.area !== "" ? sample.area : "",
+        etapa: String(sample.etapa || ""),
+      };
+    }
+    if (sample && String(sample.turno || sample.loteNum || "").trim()) {
+      return {
+        turno: String(sample.turno || ""),
+        loteId: String(sample.loteId || ""),
+        loteNum: String(sample.loteNum || ""),
+        loteCode: String(sample.loteCode || ""),
+        variedad: String(sample.variedad || ""),
+        area: sample.area != null && sample.area !== "" ? sample.area : "",
+        etapa: String(sample.etapa || ""),
       };
     }
     return locusFromCartilla_(cartilla);
+  }
+
+  /** Clave estable turno+lote (reinicio de conteo por ubicación). */
+  function locusKeyFrom_(loc) {
+    if (!loc) return "";
+    const code = String(loc.loteCode || "").trim().toUpperCase();
+    if (code) return code;
+    const t = String(loc.turno || "").trim();
+    const l = String(loc.loteNum || "").trim();
+    if (!t && !l) return "";
+    return `T${t}|L${l}`;
+  }
+
+  function sampleLocusKey_(sample, cartilla) {
+    return locusKeyFrom_(sampleLocusOrCartilla_(sample, cartilla));
+  }
+
+  function cartillaLocusKey_(cartilla) {
+    return locusKeyFrom_(locusFromCartilla_(cartilla));
+  }
+
+  function indicesForLocusKey_(samples, cartilla, key) {
+    const want = String(key || "");
+    const out = [];
+    if (!want) return out;
+    for (let i = 0; i < samples.length; i++) {
+      if (sampleLocusKey_(samples[i], cartilla) === want) out.push(i);
+    }
+    return out;
+  }
+
+  function cartillaHasLocus_(c) {
+    return !!(
+      c &&
+      String(c.turno || "").trim() &&
+      String(c.loteNum || c.loteId || "").trim() &&
+      String(c.loteCode || "").trim()
+    );
+  }
+
+  function requireCartillaLocus_(opts) {
+    const c = state.cartilla;
+    if (cartillaHasLocus_(c)) return true;
+    toast("Selecciona turno y lote para continuar", "warn");
+    if (!(opts && opts.silent)) {
+      setTimeout(() => openCartillaTurnoSelect_(), 120);
+    }
+    return false;
+  }
+
+  /** Congela ubicación en muestras con contenido antes de cambiar turno/lote. */
+  function freezeUnstampedSamples_(cartilla, locus) {
+    const loc = locus || locusFromCartilla_(cartilla);
+    if (!locusKeyFrom_(loc)) return;
+    ensureSamples_(cartilla).forEach((s) => {
+      if (!s || !sampleHasContent_(s)) return;
+      if (!String(s.loteCode || s.turno || "").trim()) {
+        stampSampleLocus_(s, loc);
+      }
+    });
+  }
+
+  /**
+   * Al cambiar turno/lote: nueva muestra 1 en blanco (sin inputs, detalle ni foto).
+   * Las muestras anteriores se conservan selladas; no se reutiliza el objeto actual.
+   */
+  function startNewLocusSeries_(cartilla) {
+    const samples = ensureSamples_(cartilla);
+    // Quita solo vacías del final (sin campos/foto/obs)
+    while (samples.length > 0 && !sampleHasContent_(samples[samples.length - 1])) {
+      samples.pop();
+    }
+    if (samples.length >= SAMPLE_MAX()) {
+      toast("Límite de muestras alcanzado", "warn");
+      if (samples.length) state.muestraIndex = samples.length - 1;
+      return false;
+    }
+    const blank = freshBlankSample_(locusFromCartilla_(cartilla));
+    samples.push(blank);
+    state.muestraIndex = samples.length - 1;
+    return true;
   }
 
   function applyLocusToCartilla_(c, meta) {
@@ -165,7 +253,12 @@ QB.App = (() => {
       if (s.observacion == null) s.observacion = "";
       if (s.photoDataUrl == null) s.photoDataUrl = "";
       if (s.photoTakenAt == null) s.photoTakenAt = "";
-      if (!String(s.loteCode || s.turno || "").trim() && locus) {
+      // Nunca reasigna muestras con contenido; solo sella vacías sin ubicación
+      if (
+        !String(s.loteCode || s.turno || "").trim() &&
+        locusKeyFrom_(locus) &&
+        !sampleHasContent_(s)
+      ) {
         stampSampleLocus_(s, locus);
       }
       if (!String(s.observacion).trim() && legacy && i === 0) {
@@ -183,9 +276,32 @@ QB.App = (() => {
     return (QB.SAMPLE_FIELDS || []).some((f) => String(sample?.[f.id] ?? "").trim() !== "");
   }
 
+  /** Campos, foto u observación: no se puede reasignar a otro turno/lote. */
+  function sampleHasContent_(sample) {
+    if (!sample) return false;
+    if (sampleHasData_(sample)) return true;
+    if (String(sample.observacion || "").trim()) return true;
+    if (String(sample.photoDataUrl || "").trim()) return true;
+    return false;
+  }
+
+  /** Muestra 100% limpia para un turno/lote (nunca hereda inputs/foto). */
+  function freshBlankSample_(locus) {
+    const s = emptySample_(locus);
+    (QB.SAMPLE_FIELDS || []).forEach((f) => {
+      s[f.id] = "";
+    });
+    s.observacion = "";
+    s.photoDataUrl = "";
+    s.photoTakenAt = "";
+    s.sampleId = newSampleId_();
+    if (locus) stampSampleLocus_(s, locus);
+    return s;
+  }
+
   function pruneEmptySamples_(cartilla) {
     const samples = ensureSamples_(cartilla);
-    while (samples.length > 1 && !sampleHasData_(samples[samples.length - 1])) {
+    while (samples.length > 1 && !sampleHasContent_(samples[samples.length - 1])) {
       samples.pop();
     }
     if (state.muestraIndex >= samples.length) {
@@ -964,8 +1080,6 @@ QB.App = (() => {
     setCampanaLabel_(campana);
     setSelectLabel($("#sel-fundo"), fundoLabel || "");
     setSelectLabel($("#sel-modulo"), "");
-    setSelectLabel($("#sel-turno"), "");
-    setSelectLabel($("#sel-lote"), "");
   }
 
   function clearSelectsAfterSave_() {
@@ -988,8 +1102,6 @@ QB.App = (() => {
     setSelectLabel($("#sel-cartilla"), "Fenología");
     setSelectLabel($("#sel-fundo"), "");
     setSelectLabel($("#sel-modulo"), "");
-    setSelectLabel($("#sel-turno"), "");
-    setSelectLabel($("#sel-lote"), "");
   }
 
   async function openCreateModal() {
@@ -1068,15 +1180,13 @@ QB.App = (() => {
         state.create.fundoLabel = opt.label;
         setSelectLabel($("#sel-fundo"), opt.label);
         writePrefs_({ fundoId: opt.id, fundoLabel: opt.label });
-        // Al cambiar fundo, limpia módulo/turno/lote (catálogo filtrado)
+        // Al cambiar fundo, limpia módulo (turno/lote se eligen en la cartilla)
         if (changed) {
           state.create.modulo = "";
           state.create.turno = "";
           state.create.loteId = "";
           state.create.loteMeta = null;
           setSelectLabel($("#sel-modulo"), "");
-          setSelectLabel($("#sel-turno"), "");
-          setSelectLabel($("#sel-lote"), "");
         }
       },
     });
@@ -1098,61 +1208,6 @@ QB.App = (() => {
         state.create.loteId = "";
         state.create.loteMeta = null;
         setSelectLabel($("#sel-modulo"), opt.label);
-        setSelectLabel($("#sel-turno"), "");
-        setSelectLabel($("#sel-lote"), "");
-      },
-    });
-  }
-
-  function openTurnoSelect() {
-    if (!state.create.fundoId) {
-      toast("Elige fundo primero", "warn");
-      return;
-    }
-    if (!state.create.modulo) {
-      toast("Elige módulo primero", "warn");
-      return;
-    }
-    QB.PreciseSelect.open({
-      title: "Turno",
-      hideSearch: true,
-      value: state.create.turno,
-      getOptions: (q) => QB.Data.turnoOptions(state.create.modulo, q, state.create.fundoId),
-      onSelect: (opt) => {
-        state.create.turno = opt.id;
-        state.create.loteId = "";
-        state.create.loteMeta = null;
-        setSelectLabel($("#sel-turno"), opt.label);
-        setSelectLabel($("#sel-lote"), "");
-      },
-    });
-  }
-
-  function openLoteSelect() {
-    if (!state.create.fundoId) {
-      toast("Elige fundo primero", "warn");
-      return;
-    }
-    if (!state.create.modulo || !state.create.turno) {
-      toast("Elige módulo y turno primero", "warn");
-      return;
-    }
-    QB.PreciseSelect.open({
-      title: "Lote",
-      hideSearch: true,
-      value: state.create.loteId,
-      getOptions: (q) =>
-        QB.Data.lotesForModuloTurno(
-          state.create.modulo,
-          state.create.turno,
-          q,
-          state.create.fundoId
-        ),
-      onSelect: (opt) => {
-        state.create.loteId = opt.id;
-        const meta = QB.Data.loteMeta(opt.id);
-        state.create.loteMeta = meta;
-        setSelectLabel($("#sel-lote"), QB.Data.loteLabel(meta.raw || meta) || opt.label);
       },
     });
   }
@@ -1208,15 +1263,6 @@ QB.App = (() => {
       toast("Selecciona módulo", "warn");
       return;
     }
-    if (!c.turno) {
-      toast("Selecciona turno", "warn");
-      return;
-    }
-    if (!c.loteId) {
-      toast("Selecciona lote", "warn");
-      return;
-    }
-    const meta = c.loteMeta || QB.Data.loteMeta(c.loteId);
     const campana = normalizeCampana_(c.campana || defaultCampana_());
     writePrefs_({
       evaluadorId: c.evaluadorId,
@@ -1227,10 +1273,9 @@ QB.App = (() => {
       fundoLabel: c.fundoLabel,
       campana,
       modulo: c.modulo,
-      turno: c.turno,
+      turno: "",
     });
-    const fundoLabel =
-      c.fundoLabel || fundoLabelFromId_(c.fundoId) || String(meta.etapa || "");
+    const fundoLabel = c.fundoLabel || fundoLabelFromId_(c.fundoId) || "";
     const cartilla = emptyCartilla_({
       clientId: QB.API.newClientId(),
       fecha: todayISO_(),
@@ -1240,20 +1285,26 @@ QB.App = (() => {
       cartillaLabel: c.cartillaLabel || "Fenología",
       campana,
       fundoId: String(c.fundoId || ""),
-      modulo: QB.Data.normalizeModulo(meta.modulo || c.modulo),
-      turno: String(meta.turno || c.turno),
-      loteId: c.loteId,
-      loteNum: String(meta.lote || ""),
-      loteCode: QB.Data.formatLoteCode(meta) || String(meta.codLote || c.loteId),
+      modulo: QB.Data.normalizeModulo(c.modulo),
+      turno: "",
+      loteId: "",
+      loteNum: "",
+      loteCode: "",
       etapa: fundoLabel,
       fundo: fundoLabel,
-      variedad: meta.variedad || "",
-      area: meta.area != null && meta.area !== "" ? meta.area : "",
+      variedad: "",
+      area: "",
       observacion: "",
     });
     // Abrir ya: el GET de acceso a Google puede tardar varios segundos
     closeCreateModal({ force: true });
     openCartilla(cartilla, 0);
+    // Turno/lote formales al iniciar (no en el modal CREAR)
+    setTimeout(() => {
+      if (state.cartilla === cartilla && !cartillaHasLocus_(cartilla)) {
+        openCartillaTurnoSelect_();
+      }
+    }, 280);
     revisarAccesoDni_(c.evaluadorId, { clear: true });
   }
 
@@ -1304,9 +1355,13 @@ QB.App = (() => {
     }
     const fields = QB.SAMPLE_FIELDS || [];
     if (listEl) {
+      const locusCounters = Object.create(null);
       listEl.innerHTML = samples
-        .map((s, i) => {
+        .map((s) => {
           const loc = sampleLocusOrCartilla_(s, c);
+          const key = locusKeyFrom_(loc) || "_";
+          locusCounters[key] = (locusCounters[key] || 0) + 1;
+          const n = locusCounters[key];
           const cells = fields
             .map((f) => {
               const v = s[f.id];
@@ -1318,7 +1373,7 @@ QB.App = (() => {
           const sampleObs = String(s.observacion || "").trim();
           return `<article class="resumen-sample">
             <header>
-              <span>Muestra ${i + 1}</span>
+              <span>Muestra ${n}</span>
               <strong>${escapeHtml(loc.loteCode || "—")}</strong>
             </header>
             <div class="resumen-meta-row" style="margin:6px 0 10px">
@@ -1344,6 +1399,7 @@ QB.App = (() => {
     if (Date.now() < cartillaReadyAt_) return;
     // Ghost-click tras cerrar cámara / tomar foto
     if (Date.now() < cameraGuardUntil_) return;
+    if (!requireCartillaLocus_()) return;
     const c = state.cartilla;
     pruneEmptySamples_(c);
     renderCartilla();
@@ -1429,8 +1485,6 @@ QB.App = (() => {
           c.variedad = "";
           c.area = "";
         }
-        const sample = ensureSampleObj_();
-        if (sample) stampSampleLocus_(sample, locusFromCartilla_(c));
         renderCartilla();
         saveDraft_();
         if (changed) {
@@ -1453,6 +1507,8 @@ QB.App = (() => {
       return;
     }
     const fundoId = cartillaFundoId_(c);
+    const prevLocus = locusFromCartilla_(c);
+    const prevKey = locusKeyFrom_(prevLocus);
     QB.PreciseSelect.open({
       title: "Seleccionar lote",
       hideSearch: true,
@@ -1467,17 +1523,36 @@ QB.App = (() => {
           modulo: c.modulo,
           codLote: opt.id,
         };
+        // Antes de cambiar: fija turno/lote en muestras ya llenadas (no mezclar)
+        if (prevKey) freezeUnstampedSamples_(c, prevLocus);
+
         applyLocusToCartilla_(c, {
           ...meta,
           id: opt.id,
           loteId: opt.id,
           loteNum: meta.lote,
         });
-        const sample = ensureSampleObj_();
-        if (sample) stampSampleLocus_(sample, locusFromCartilla_(c));
+        const newKey = cartillaLocusKey_(c);
+        if (!newKey) {
+          toast("No se pudo enlazar el lote", "error");
+          return;
+        }
+        if (newKey !== prevKey) {
+          // Siempre muestra nueva en blanco: no hereda inputs/foto del lote anterior
+          startNewLocusSeries_(c);
+          toast(`Enlazado · ${c.loteCode} · muestra 1`, "ok");
+        } else {
+          const sample = ensureSampleObj_();
+          if (sample && !sampleHasContent_(sample)) {
+            // Misma ubicación: limpia por si quedó basura visual y sella
+            const clean = freshBlankSample_(locusFromCartilla_(c));
+            c.samples[state.muestraIndex] = clean;
+          }
+          toast(`Enlazado · ${c.loteCode}`, "ok");
+        }
+        // Fuerza UI limpia (inputs + foto) de la muestra activa
         renderCartilla();
         saveDraft_();
-        toast(`Enlazado · ${c.loteCode}`, "ok");
       },
     });
   }
@@ -1496,12 +1571,20 @@ QB.App = (() => {
     const nextBtn = $("#btn-muestra-next");
     const sample = c.samples[state.muestraIndex] || emptySample_(locusFromCartilla_(c));
     const loc = sampleLocusOrCartilla_(sample, c);
+    const groupKey = sampleLocusKey_(sample, c) || cartillaLocusKey_(c);
+    const groupIdxs = indicesForLocusKey_(samples, c, groupKey);
+    const localPos = Math.max(0, groupIdxs.indexOf(state.muestraIndex));
+    const localTotal = Math.max(1, groupIdxs.length || 1);
     if (codeEl) codeEl.value = loc.loteCode || c.loteCode || "";
     if (codeSub) codeSub.textContent = loc.loteCode || c.loteCode || "Nueva cartilla";
-    if (numEl) numEl.textContent = `${state.muestraIndex + 1} / ${total}`;
+    if (numEl) numEl.textContent = `${localPos + 1} / ${localTotal}`;
     if (verEl) verEl.textContent = (QB.CONFIG && QB.CONFIG.VERSION) || "1.0";
-    if (prevBtn) prevBtn.disabled = state.muestraIndex <= 0;
-    if (nextBtn) nextBtn.disabled = state.muestraIndex >= SAMPLE_MAX() - 1 && state.muestraIndex >= total - 1;
+    if (prevBtn) prevBtn.disabled = localPos <= 0 && state.muestraIndex <= 0;
+    if (nextBtn) {
+      const canGoLaterSample = state.muestraIndex < total - 1;
+      const canAddInGroup = localPos < SAMPLE_MAX() - 1;
+      nextBtn.disabled = !canGoLaterSample && !canAddInGroup && localPos >= localTotal - 1;
+    }
     renderCartillaLocusBar_(c, sample);
 
     const root = $("#cartilla-fields");
@@ -1775,7 +1858,15 @@ QB.App = (() => {
       }
       // Después de showScreen (que re-habilita la barra): rearmar el bloqueo
       armCameraGuard_(1100);
-      toast(`Foto en muestra ${state.muestraIndex + 1} · con fecha y hora`, "ok");
+      {
+        const c = state.cartilla;
+        const samples = c ? ensureSamples_(c) : [];
+        const cur = samples[state.muestraIndex];
+        const key = c ? sampleLocusKey_(cur, c) || cartillaLocusKey_(c) : "";
+        const idxs = c ? indicesForLocusKey_(samples, c, key) : [];
+        const local = Math.max(0, idxs.indexOf(state.muestraIndex)) + 1;
+        toast(`Foto en muestra ${local} · con fecha y hora`, "ok");
+      }
     } catch (_) {
       toast("No se pudo guardar la foto", "error");
       armCameraGuard_(700);
@@ -1977,26 +2068,66 @@ QB.App = (() => {
 
   async function switchMuestra(dir) {
     if (!state.cartilla) return;
-    const samples = ensureSamples_(state.cartilla);
-    const next = state.muestraIndex + dir;
-    if (next < 0) return;
-    if (next >= samples.length) {
-      if (samples.length >= SAMPLE_MAX()) return;
-      const current = samples[state.muestraIndex];
-      if (!sampleHasData_(current)) {
-        await feedback({
-          title: "Muestra vacía",
-          text: "Completa al menos un campo antes de agregar otra muestra.",
-          type: "warn",
-          confirmText: "Entendido",
-        });
-      return;
+    if (dir > 0 && !requireCartillaLocus_()) return;
+    const c = state.cartilla;
+    const samples = ensureSamples_(c);
+    const cur = samples[state.muestraIndex] || emptySample_(locusFromCartilla_(c));
+    const groupKey = sampleLocusKey_(cur, c) || cartillaLocusKey_(c);
+    let idxs = indicesForLocusKey_(samples, c, groupKey);
+    if (!idxs.length) {
+      idxs = [state.muestraIndex];
     }
-      samples.push(emptySample_(locusFromCartilla_(state.cartilla)));
+    let pos = idxs.indexOf(state.muestraIndex);
+    if (pos < 0) pos = 0;
+
+    if (dir < 0) {
+      if (pos > 0) {
+        state.muestraIndex = idxs[pos - 1];
+      } else if (state.muestraIndex > 0) {
+        // Del 114 ← vuelve al 113 con su data sellada (sin mezclar)
+        state.muestraIndex = state.muestraIndex - 1;
+      } else {
+        return;
+      }
+    } else {
+      if (pos < idxs.length - 1) {
+        state.muestraIndex = idxs[pos + 1];
+      } else if (state.muestraIndex < samples.length - 1) {
+        // Si más adelante hay otro lote (ej. 114), avanza ahí
+        state.muestraIndex = state.muestraIndex + 1;
+      } else {
+        if (!sampleHasData_(samples[state.muestraIndex])) {
+          await feedback({
+            title: "Muestra vacía",
+            text: "Completa al menos un campo antes de agregar otra muestra.",
+            type: "warn",
+            confirmText: "Entendido",
+          });
+          return;
+        }
+        if (idxs.length >= SAMPLE_MAX() || samples.length >= SAMPLE_MAX()) return;
+        const locus = sampleLocusOrCartilla_(samples[state.muestraIndex], c);
+        samples.push(freshBlankSample_(locus || locusFromCartilla_(c)));
+        state.muestraIndex = samples.length - 1;
+      }
     }
-    state.muestraIndex = next;
+    // Siempre alinea barra Turno/Lote a LA muestra visible (data fija)
+    syncCartillaToSampleLocus_(c, samples[state.muestraIndex]);
     renderCartilla();
     saveDraft_();
+  }
+
+  function syncCartillaToSampleLocus_(c, sample) {
+    if (!c || !sample) return;
+    const locus = sampleLocusOrCartilla_(sample, c);
+    if (!locus) return;
+    c.turno = locus.turno || c.turno;
+    c.loteId = locus.loteId || c.loteId;
+    c.loteNum = locus.loteNum || c.loteNum;
+    c.loteCode = locus.loteCode || c.loteCode;
+    if (locus.variedad) c.variedad = locus.variedad;
+    if (locus.area !== "" && locus.area != null) c.area = locus.area;
+    if (locus.etapa) c.etapa = locus.etapa;
   }
 
   /** Foto solo de ESA muestra (mismo orden / N° que rows). Nunca se comparte entre muestras. */
@@ -2008,10 +2139,13 @@ QB.App = (() => {
     const rows = [];
     const photos = [];
     const horaSubida = limaNowStamp_();
+    const locusCounters = Object.create(null);
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i] || emptySample_(locusFromCartilla_(cartilla));
       const loc = sampleLocusOrCartilla_(s, cartilla);
-      const n = i + 1;
+      const key = locusKeyFrom_(loc) || "_";
+      locusCounters[key] = (locusCounters[key] || 0) + 1;
+      const n = locusCounters[key];
       const row = {
         Lote: loc.loteCode || cartilla.loteCode || "",
         Fecha: cartilla.fecha || todayISO_(),
@@ -2063,8 +2197,21 @@ QB.App = (() => {
     }
     if (Date.now() < resumenReadyAt_) return;
     const c = state.cartilla;
+    if (!requireCartillaLocus_()) return;
+    // Seguridad: cada muestra con data debe tener su propio turno/lote sellado
+    freezeUnstampedSamples_(c, locusFromCartilla_(c));
     pruneEmptySamples_(c);
     const samples = ensureSamples_(c).filter(sampleHasData_);
+    const mixed = samples.filter((s) => !sampleLocusKey_(s, c));
+    if (mixed.length) {
+      await feedback({
+        title: "Ubicación incompleta",
+        text: "Hay muestras sin turno/lote. Vuelve a la cartilla y selecciónalos antes de guardar.",
+        type: "warn",
+        confirmText: "Entendido",
+      });
+      return;
+    }
     if (!samples.length) {
       await feedback({
         title: "No hay data",
@@ -2448,10 +2595,14 @@ QB.App = (() => {
   function openLastSendDetail_() {
     if (!requireSession_()) return;
     const cardEl = $("#last-send-card");
-    if (!cardEl || !cardEl.classList.contains("has-data")) return;
+    if (!cardEl) return;
+    if (cardEl.dataset.state === "empty" || !cardEl.dataset.clientId) {
+      toast("Aún no hay envíos · 00", "warn");
+      return;
+    }
     const sends = localSendsLast18h_();
     if (!sends.length) {
-      toast("Sin envíos locales de las últimas 18 h", "info");
+      toast("Sin envíos locales de las últimas 18 h", "warn");
       return;
     }
     const clientId = String(cardEl.dataset.clientId || "").trim();
@@ -2469,6 +2620,44 @@ QB.App = (() => {
     requestAnimationFrame(() => root.classList.add("open"));
   }
 
+  function paintLastSendEmpty_() {
+    const titleEl = $("#last-send-title");
+    const typeEl = $("#last-send-type");
+    const textEl = $("#last-send-text");
+    const badgeEl = $("#last-send-badge");
+    const cardEl = $("#last-send-card");
+    if (titleEl) titleEl.textContent = "00";
+    if (typeEl) {
+      typeEl.hidden = false;
+      typeEl.textContent = "Fenología";
+    }
+    if (textEl) {
+      textEl.innerHTML = "";
+      const a = document.createElement("span");
+      a.className = "last-send-line";
+      a.textContent = "00 · sin envíos";
+      textEl.appendChild(a);
+      const b = document.createElement("span");
+      b.className = "last-send-line";
+      b.textContent = "00 · 0 muestras";
+      textEl.appendChild(b);
+    }
+    if (badgeEl) {
+      badgeEl.hidden = false;
+      badgeEl.textContent = "00";
+      badgeEl.classList.remove("is-pending");
+    }
+    if (cardEl) {
+      // Siempre visible con el mismo look (has-data); vacío = 00
+      cardEl.classList.add("has-data");
+      cardEl.dataset.state = "empty";
+      cardEl.dataset.clientId = "";
+      cardEl.setAttribute("role", "button");
+      cardEl.tabIndex = 0;
+      cardEl.setAttribute("aria-label", "Último envío · 00 sin datos");
+    }
+  }
+
   function renderLastSend_() {
     const titleEl = $("#last-send-title");
     const typeEl = $("#last-send-type");
@@ -2480,96 +2669,47 @@ QB.App = (() => {
     const list = reconcileLocalListStatus_();
     const pending = pendingIds_();
     const latest = list.find((x) => x && x.clientId) || null;
-    const syncAt = QB.API.getLastSyncAt ? QB.API.getLastSyncAt() : 0;
 
-    if (latest) {
-      const isPending = pending.has(latest.clientId);
-      const parts = formatLastSendParts_(latest.at || syncAt);
-      const n = Number(latest.sampleCount) || (Array.isArray(latest.samples) ? latest.samples.length : 0);
-      const samplesTxt = n > 0 ? `${n} muestra${n === 1 ? "" : "s"}` : "";
-      titleEl.textContent = latest.loteCode || latest.cartillaLabel || "Cartilla";
-      if (typeEl) {
-        typeEl.hidden = false;
-        typeEl.textContent = latest.cartillaLabel || "Fenología";
-      }
-      const line1 = [latest.fecha || "", parts.date].filter(Boolean).join(" · ");
-      const line2 = [parts.time, samplesTxt].filter(Boolean).join(" · ");
-      textEl.innerHTML = "";
-      if (line1) {
-        const a = document.createElement("span");
-        a.className = "last-send-line";
-        a.textContent = line1;
-        textEl.appendChild(a);
-      }
-      if (line2) {
-        const b = document.createElement("span");
-        b.className = "last-send-line";
-        b.textContent = line2;
-        textEl.appendChild(b);
-      }
-      if (!line1 && !line2) textEl.textContent = "—";
-      if (badgeEl) {
-        badgeEl.hidden = false;
-        badgeEl.textContent = isPending ? "Pendiente" : "Enviado";
-        badgeEl.classList.toggle("is-pending", isPending);
-      }
-      if (cardEl) {
-        cardEl.classList.add("has-data");
-        cardEl.dataset.state = isPending ? "pending" : "sent";
-        cardEl.dataset.clientId = latest.clientId || "";
-        cardEl.setAttribute("role", "button");
-        cardEl.tabIndex = 0;
-        cardEl.setAttribute("aria-label", "Ver resumen de muestras enviadas");
-      }
+    if (!latest) {
+      paintLastSendEmpty_();
       return;
     }
 
-    if (syncAt) {
-      const parts = formatLastSendParts_(syncAt);
-      titleEl.textContent = "Sincronización reciente";
-      if (typeEl) {
-        typeEl.hidden = false;
-        typeEl.textContent = "Fenología";
-      }
-      textEl.innerHTML = "";
-      const a = document.createElement("span");
-      a.className = "last-send-line";
-      a.textContent = "Último sync";
-      textEl.appendChild(a);
-      if (parts.date || parts.time) {
-        const b = document.createElement("span");
-        b.className = "last-send-line";
-        b.textContent = [parts.date, parts.time].filter(Boolean).join(", ");
-        textEl.appendChild(b);
-      }
-      if (badgeEl) {
-        badgeEl.hidden = false;
-        badgeEl.textContent = "Enviado";
-        badgeEl.classList.remove("is-pending");
-      }
-      if (cardEl) {
-        cardEl.classList.add("has-data");
-        cardEl.dataset.state = "sent";
-        cardEl.dataset.clientId = "";
-        cardEl.removeAttribute("role");
-        cardEl.removeAttribute("tabindex");
-      }
-      return;
-    }
-
-    titleEl.textContent = "Sin envíos aún";
+    const isPending = pending.has(latest.clientId);
+    const parts = formatLastSendParts_(latest.at || 0);
+    const n =
+      Number(latest.sampleCount) ||
+      (Array.isArray(latest.samples) ? latest.samples.length : 0) ||
+      0;
+    const samplesTxt = `${n} muestra${n === 1 ? "" : "s"}`;
+    titleEl.textContent = latest.loteCode || latest.cartillaLabel || "Cartilla";
     if (typeEl) {
-      typeEl.hidden = true;
-      typeEl.textContent = "";
+      typeEl.hidden = false;
+      typeEl.textContent = latest.cartillaLabel || "Fenología";
     }
-    textEl.textContent = "Cuando guardes una cartilla, verás aquí si quedó pendiente o enviada.";
-    if (badgeEl) badgeEl.hidden = true;
+    const line1 = [latest.fecha || "", parts.date].filter(Boolean).join(" · ") || "00";
+    const line2 = [parts.time || "00", samplesTxt].filter(Boolean).join(" · ");
+    textEl.innerHTML = "";
+    const a = document.createElement("span");
+    a.className = "last-send-line";
+    a.textContent = line1;
+    textEl.appendChild(a);
+    const b = document.createElement("span");
+    b.className = "last-send-line";
+    b.textContent = line2;
+    textEl.appendChild(b);
+    if (badgeEl) {
+      badgeEl.hidden = false;
+      badgeEl.textContent = isPending ? "Pendiente" : "Enviado";
+      badgeEl.classList.toggle("is-pending", isPending);
+    }
     if (cardEl) {
-      cardEl.classList.remove("has-data");
-      cardEl.dataset.state = "empty";
-      cardEl.dataset.clientId = "";
-      cardEl.removeAttribute("role");
-      cardEl.removeAttribute("tabindex");
+      cardEl.classList.add("has-data");
+      cardEl.dataset.state = isPending ? "pending" : "sent";
+      cardEl.dataset.clientId = latest.clientId || "";
+      cardEl.setAttribute("role", "button");
+      cardEl.tabIndex = 0;
+      cardEl.setAttribute("aria-label", "Ver resumen de muestras enviadas");
     }
   }
 
@@ -4146,8 +4286,6 @@ QB.App = (() => {
     fastTap_($("#sel-cartilla"), openCartillaSelect);
     fastTap_($("#sel-fundo"), openFundoSelect);
     fastTap_($("#sel-modulo"), openModuloSelect);
-    fastTap_($("#sel-turno"), openTurnoSelect);
-    fastTap_($("#sel-lote"), openLoteSelect);
 
     fastTap_($("#btn-back-cartilla"), leaveCartilla);
     fastTap_($("#btn-muestra-prev"), () => switchMuestra(-1));

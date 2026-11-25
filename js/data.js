@@ -84,15 +84,22 @@ QB.Data = (() => {
     "77799828": { nombre: "ZAVALETA IGLESIAS KAHORY MARIANELA" },
   };
 
+  /** Árbol oficial: Etapa → Módulo → Turno → [lotes] (no mezclar etapas) */
+  let lotesTree = null;
+  let lotesTreeAllow_ = new Set();
+
   /** Semilla embebida (lotes / evaluadores) si falla fetch */
   function applySeed_() {
     const seed = (window.QB && window.QB.SEED) || {};
     if (seed.evaluadores && Object.keys(evaluadores).length === 0) {
       evaluadores = Object.assign({}, seed.evaluadores);
     }
+    if (seed.lotesTree && !lotesTree) {
+      setLotesTree_(seed.lotesTree);
+    }
     // Lotes siempre desde semilla si el catálogo aún está vacío (offline / SW)
     if (Array.isArray(seed.lotes) && seed.lotes.length && lotes.length === 0) {
-      buildLoteCatalog(seed.lotes);
+      buildLoteCatalog(seed.lotes, lotesTree);
     }
   }
   applySeed_();
@@ -155,89 +162,142 @@ QB.Data = (() => {
     return "";
   }
 
-  /** ¿El lote pertenece al fundo seleccionado (I–IV)? */
+  /** ¿El lote pertenece al fundo seleccionado (I–IV)? Exacto: no mezcla I con II. */
   function matchesFundo_(loteEtapa, fundoId) {
     const want = String(fundoId || "").trim().toUpperCase();
     if (!want) return true;
     const kind = etapaKind(loteEtapa);
     if (!kind) return false;
+    // Legado I/II solo si aún existiera en caché vieja
     if (kind === "I/II") return want === "I" || want === "II";
     return kind === want;
   }
 
-  /**
-   * Catálogo de lotes.
-   * - Misma número con I+II → una fila Licapa I/II
-   * - III / IV se conservan aparte (no se mezclan con II)
-   */
-  function buildLoteCatalog(raw) {
-    const all = Array.isArray(raw) ? raw : [];
-    const groups = new Map();
-    all.forEach((l) => {
-      const n = String(l.lote ?? "").trim();
-      if (!n) return;
-      const kind = etapaKind(l.etapa) || "_";
-      // III/IV no se agrupan con I/II aunque compartan número
-      const key = kind === "III" || kind === "IV" ? `${n}::${kind}` : n;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(l);
-    });
+  function normalizeLoteToken_(v) {
+    return String(v ?? "")
+      .trim()
+      .replace(/\s+/g, " ");
+  }
 
-    lotesById = {};
-    lotes = [];
+  function treeSlotKey_(etapa, modulo, turno, lote) {
+    const kind = etapaKind(etapa) || String(etapa || "").trim().toUpperCase();
+    const mod = normalizeModulo_(modulo);
+    const tur = String(turno ?? "").trim();
+    const lot = normalizeLoteToken_(lote).toUpperCase();
+    return `${kind}|${mod}|${tur}|${lot}`;
+  }
 
-    all.forEach((l) => {
-      const cod = String(l.codLote || "").trim();
-      if (cod) lotesById[cod] = l;
-    });
-
-    groups.forEach((group, key) => {
-      const num = String(key).split("::")[0];
-      const licapaI = group.find((l) => etapaKind(l.etapa) === "I");
-      const licapaII = group.find((l) => etapaKind(l.etapa) === "II");
-      const licapaIII = group.find((l) => etapaKind(l.etapa) === "III");
-      const licapaIV = group.find((l) => etapaKind(l.etapa) === "IV");
-      let pick;
-      let etapaLabel;
-      if (licapaI && licapaII) {
-        pick = licapaI;
-        etapaLabel = "Licapa I/II";
-      } else if (licapaI) {
-        pick = licapaI;
-        etapaLabel = "Licapa I";
-      } else if (licapaII) {
-        pick = licapaII;
-        etapaLabel = "Licapa II";
-      } else if (licapaIII) {
-        pick = licapaIII;
-        etapaLabel = "Licapa III";
-      } else if (licapaIV) {
-        pick = licapaIV;
-        etapaLabel = "Licapa IV";
-      } else {
-        pick = group[0];
-        etapaLabel = String(pick.etapa || "").trim() || fundoLabel_(etapaKind(pick.etapa));
-      }
-      const entry = { ...pick, lote: num, etapa: etapaLabel };
-      lotes.push(entry);
-      // Índice por número: no pisar III/IV con otra etapa
-      const prev = lotesById[num];
-      if (!prev || etapaKind(prev.etapa) === etapaKind(etapaLabel)) {
-        lotesById[num] = entry;
-        lotesById[`Q${num}`] = entry;
-      }
-      if (pick.codLote) lotesById[String(pick.codLote)] = entry;
-      group.forEach((l) => {
-        const cod = String(l.codLote || "").trim();
-        if (cod) lotesById[cod] = entry;
+  function setLotesTree_(tree) {
+    lotesTree = tree && typeof tree === "object" ? tree : null;
+    lotesTreeAllow_ = new Set();
+    if (!lotesTree) return;
+    Object.keys(lotesTree).forEach((etapa) => {
+      const mods = lotesTree[etapa] || {};
+      Object.keys(mods).forEach((mod) => {
+        const turns = mods[mod] || {};
+        Object.keys(turns).forEach((tur) => {
+          (turns[tur] || []).forEach((lote) => {
+            lotesTreeAllow_.add(treeSlotKey_(etapa, mod, tur, lote));
+          });
+        });
       });
     });
+  }
+
+  function allowedByTree_(etapa, modulo, turno, lote) {
+    if (!lotesTreeAllow_ || !lotesTreeAllow_.size) return true;
+    return lotesTreeAllow_.has(treeSlotKey_(etapa, modulo, turno, lote));
+  }
+
+  /**
+   * Catálogo de lotes: una fila por Etapa+Módulo+Turno+Lote.
+   * Filtra con el árbol oficial (no mezcla Licapa I/II/III).
+   */
+  function buildLoteCatalog(raw, tree) {
+    if (tree) setLotesTree_(tree);
+    const all = Array.isArray(raw) ? raw : [];
+    lotesById = {};
+    lotes = [];
+    const seen = new Set();
+
+    const pushEntry_ = (l, etapaLabel) => {
+      const lote = normalizeLoteToken_(l.lote);
+      if (!lote) return;
+      const modulo = normalizeModulo_(l.modulo);
+      const turno = String(l.turno ?? "").trim();
+      const etapa = etapaLabel || String(l.etapa || "").trim();
+      if (!allowedByTree_(etapa, modulo, turno, lote)) return;
+      const slot = treeSlotKey_(etapa, modulo, turno, lote);
+      if (seen.has(slot)) return;
+      seen.add(slot);
+      const kind = etapaKind(etapa);
+      const entry = {
+        ...l,
+        lote,
+        modulo,
+        turno,
+        etapa: fundoLabel_(kind) || etapa,
+        codLote:
+          String(l.codLote || "").trim() ||
+          `${modulo}T${turno}L${lote}`.replace(/\s+/g, ""),
+      };
+      lotes.push(entry);
+      if (entry.codLote) lotesById[String(entry.codLote)] = entry;
+      // Índices compuestos (evita pisar el mismo n° entre etapas)
+      lotesById[slot] = entry;
+      if (kind) lotesById[`${kind}|${lote.toUpperCase()}`] = entry;
+    };
+
+    all.forEach((l) => {
+      const kind = etapaKind(l.etapa);
+      pushEntry_(l, fundoLabel_(kind) || String(l.etapa || "").trim());
+    });
+
+    // Completa huecos del árbol con filas sintéticas (si faltan en el JSON plano)
+    if (lotesTree) {
+      Object.keys(lotesTree).forEach((etapa) => {
+        const mods = lotesTree[etapa] || {};
+        Object.keys(mods).forEach((mod) => {
+          const turns = mods[mod] || {};
+          Object.keys(turns).forEach((tur) => {
+            (turns[tur] || []).forEach((lote) => {
+              const slot = treeSlotKey_(etapa, mod, tur, lote);
+              if (seen.has(slot)) return;
+              pushEntry_(
+                {
+                  lote,
+                  modulo: mod,
+                  turno: tur,
+                  etapa,
+                  codLote: `${normalizeModulo_(mod)}T${tur}L${normalizeLoteToken_(lote)}`.replace(
+                    /\s+/g,
+                    ""
+                  ),
+                  variedad: "",
+                  area: "",
+                },
+                etapa
+              );
+            });
+          });
+        });
+      });
+    }
 
     lotes.sort((a, b) => {
+      const ea = String(a.etapa || "");
+      const eb = String(b.etapa || "");
+      if (ea !== eb) return ea.localeCompare(eb);
+      const ma = Number(String(a.modulo).replace(/\D/g, "")) || 0;
+      const mb = Number(String(b.modulo).replace(/\D/g, "")) || 0;
+      if (ma !== mb) return ma - mb;
+      const ta = Number(a.turno) || 0;
+      const tb = Number(b.turno) || 0;
+      if (ta !== tb) return ta - tb;
       const na = Number(String(a.lote).replace(/\D/g, "")) || 0;
       const nb = Number(String(b.lote).replace(/\D/g, "")) || 0;
       if (na !== nb) return na - nb;
-      return String(a.etapa).localeCompare(String(b.etapa));
+      return String(a.lote).localeCompare(String(b.lote), undefined, { numeric: true });
     });
   }
 
@@ -257,11 +317,17 @@ QB.Data = (() => {
 
     loading = Promise.all([
       fetchJson("./data/lotes-licapa.json", null),
+      fetchJson("./data/lotes-tree-licapa.json", null),
       fetchJson("./data/evaluadores.json", null),
     ])
-      .then(([lotesJson, evalJson]) => {
+      .then(([lotesJson, treeJson, evalJson]) => {
+        if (treeJson && typeof treeJson === "object") {
+          setLotesTree_(treeJson);
+        }
         if (Array.isArray(lotesJson) && lotesJson.length) {
-          buildLoteCatalog(lotesJson);
+          buildLoteCatalog(lotesJson, lotesTree);
+        } else if (lotesTree) {
+          buildLoteCatalog([], lotesTree);
         }
         // JSON embebido solo si aún no hay sync de la hoja Evaluadores
         const hasSheetCache = restoreEvaluadoresSheetCache_();

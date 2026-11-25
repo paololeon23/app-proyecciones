@@ -1,5 +1,5 @@
 /* Q Berries Fenología — Service Worker (estabilidad: sin reinicio forzado) */
-const CACHE = "qb-proyecciones-v98";
+const CACHE = "qb-proyecciones-v105";
 const ASSETS = [
   "./",
   "./index.html",
@@ -17,7 +17,10 @@ const ASSETS = [
   "./assets/icon-512.png",
   "./assets/apple-touch-icon.png",
   "./assets/qr-install.png",
+  "./assets/imagenes/proy-guide-cosecha.webp",
+  "./assets/imagenes/proy-guide-cosecha.jpg",
   "./data/lotes-licapa.json",
+  "./data/lotes-tree-licapa.json",
   "./data/evaluadores.json",
   "./fonts/plus-jakarta-sans-500.woff2",
   "./fonts/plus-jakarta-sans-600.woff2",

@@ -3632,7 +3632,15 @@ html.precise-open body {
   isolation: isolate;
   min-height: 198px;
   aspect-ratio: 16 / 10;
-  background: #F3F6F4;
+  background:
+    linear-gradient(120deg, #1a2e22 0%, #2f6b3c 55%, #6fa37a 100%);
+  overflow: hidden;
+}
+.proy-guide-hero-media picture {
+  position: absolute;
+  inset: 0;
+  display: block;
+  z-index: 0;
 }
 .proy-guide-hero-img {
   position: absolute;
@@ -3646,6 +3654,7 @@ html.precise-open body {
   display: block;
   pointer-events: none;
   z-index: 0;
+  background: transparent;
 }
 .proy-guide-hero-media::before {
   content: "";
@@ -3875,6 +3884,15 @@ html.precise-open body {
 .last-send-card[data-state="pending"] {
   background: #FFFFFF;
   border-color: rgba(247, 148, 29, 0.28);
+}
+.last-send-card[data-state="empty"] {
+  background: #FFFFFF;
+  border-color: rgba(31, 61, 42, 0.1);
+  opacity: 0.92;
+}
+.last-send-card[data-state="empty"] .last-send-badge {
+  background: rgba(31, 61, 42, 0.08);
+  color: var(--qb-muted);
 }
 .last-send-card[data-state="pending"] .last-send-icon {
   box-shadow: 0 4px 12px rgba(201, 137, 26, 0.16);

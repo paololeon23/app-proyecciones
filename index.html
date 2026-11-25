@@ -15,6 +15,7 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
   <link rel="stylesheet" href="css/fonts.css" />
   <link rel="stylesheet" href="css/styles.css" />
+  <link rel="preload" as="image" href="assets/imagenes/proy-guide-cosecha.webp" type="image/webp" fetchpriority="high" />
   <script>
     (function () {
       function allowMobileOrTablet() {
@@ -229,7 +230,7 @@
           <strong id="sel-campana-label">—</strong>
         </div>
       </div>
-      <p class="create-lead">Completa los datos para abrir la cartilla</p>
+      <p class="create-lead">Cartilla, fundo y módulo. Turno y lote se eligen al iniciar la cartilla.</p>
       <div class="create-fields">
         <label class="create-field">
           <span>Cartilla</span>
@@ -242,14 +243,6 @@
         <label class="create-field">
           <span>Módulo</span>
           <button type="button" class="create-select" id="sel-modulo" data-placeholder="Seleccionar">Seleccionar</button>
-        </label>
-        <label class="create-field">
-          <span>Turno</span>
-          <button type="button" class="create-select" id="sel-turno" data-placeholder="Seleccionar">Seleccionar</button>
-        </label>
-        <label class="create-field">
-          <span>Lote</span>
-          <button type="button" class="create-select" id="sel-lote" data-placeholder="Seleccionar">Seleccionar</button>
         </label>
       </div>
       <div class="create-actions">
@@ -347,15 +340,19 @@
         <section class="proy-guide" aria-label="Qué es Fenología">
           <article class="proy-guide-hero">
             <div class="proy-guide-hero-media">
-              <img
-                class="proy-guide-hero-img"
-                src="assets/imagenes/Cosecha%20de%20ar%C3%A1ndanos%20QBerries%C2%AE.png"
-                alt="Cosecha de arándanos QBerries"
-                width="720"
-                height="480"
-                loading="lazy"
-                decoding="async"
-              />
+              <picture>
+                <source srcset="assets/imagenes/proy-guide-cosecha.webp" type="image/webp" />
+                <img
+                  class="proy-guide-hero-img"
+                  src="assets/imagenes/proy-guide-cosecha.jpg"
+                  alt="Cosecha de arándanos QBerries"
+                  width="960"
+                  height="540"
+                  loading="eager"
+                  fetchpriority="high"
+                  decoding="async"
+                />
+              </picture>
               <div class="proy-guide-hero-copy">
                 <p class="proy-guide-kicker">Fenología</p>
                 <h3>Qué es y para qué sirve</h3>
@@ -439,7 +436,7 @@
 
         <section class="last-send" id="last-send" aria-label="Último envío">
           <p class="ops-section-label">Último envío</p>
-          <div class="last-send-card" id="last-send-card" data-state="empty">
+          <div class="last-send-card has-data" id="last-send-card" data-state="empty" role="button" tabindex="0" aria-label="Último envío">
             <div class="last-send-icon" aria-hidden="true">
               <img
                 src="assets/imagenes/Cultivo%20de%20ar%C3%A1ndanos%20en%20el%20campo-4.png"
@@ -452,11 +449,11 @@
             </div>
             <div class="last-send-copy">
               <div class="last-send-head">
-                <strong id="last-send-title">Sin envíos aún</strong>
-                <span class="last-send-badge" id="last-send-badge" hidden>Enviado</span>
+                <strong id="last-send-title">00</strong>
+                <span class="last-send-badge" id="last-send-badge">00</span>
               </div>
               <p class="last-send-type" id="last-send-type">Fenología</p>
-              <p class="last-send-meta" id="last-send-text">Cuando guardes una cartilla, verás aquí si quedó pendiente o enviada.</p>
+              <p class="last-send-meta" id="last-send-text"><span class="last-send-line">00 · sin envíos</span><span class="last-send-line">00 · 0 muestras</span></p>
             </div>
           </div>
         </section>
