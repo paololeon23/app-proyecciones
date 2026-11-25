@@ -358,6 +358,17 @@ function photosIndex_(body) {
   return map;
 }
 
+function horaSubidaFrom_(submittedAt) {
+  if (!submittedAt) return '';
+  try {
+    var d = new Date(submittedAt);
+    if (isNaN(d.getTime())) return '';
+    return Utilities.formatDate(d, 'America/Lima', 'yyyy-MM-dd HH:mm:ss');
+  } catch (_) {
+    return '';
+  }
+}
+
 function attachPhotosToMatrix_(body, matrix) {
   var data = (body && body.data) || {};
   var byN = photosIndex_(body);
@@ -367,9 +378,17 @@ function attachPhotosToMatrix_(body, matrix) {
   var idxDni = HEADERS.indexOf('DNI');
   var idxNom = HEADERS.indexOf('Nombre');
   var idxFecha = HEADERS.indexOf('Fecha');
-  if (idxAnexo < 0 || idxHora < 0) return;
+  if (idxAnexo < 0 && idxHora < 0) return;
+
+  // Hora de envío para TODAS las filas (foto o no)
+  var horaEnvio = horaSubidaFrom_(body && body.submittedAt) || limaStamp_();
 
   for (var r = 0; r < matrix.length; r++) {
+    // Siempre asegurar Hora subida (aunque no haya foto)
+    if (idxHora >= 0 && !matrix[r][idxHora]) {
+      matrix[r][idxHora] = horaEnvio;
+    }
+
     var n = idxN >= 0 ? Number(matrix[r][idxN]) || (r + 1) : (r + 1);
     var photo = byN[n];
     if (!photo || !photo.data) continue;
@@ -382,8 +401,9 @@ function attachPhotosToMatrix_(body, matrix) {
       replaceId: photo.replaceId || ''
     }, photo.data, photo.mime || 'image/jpeg');
     if (!saved) continue;
-    matrix[r][idxAnexo] = saved.url;
-    matrix[r][idxHora] = saved.hora;
+    if (idxAnexo >= 0) matrix[r][idxAnexo] = saved.url;
+    // Con foto: hora real del guardado en Drive (sigue siendo hora Lima)
+    if (idxHora >= 0) matrix[r][idxHora] = saved.hora || horaEnvio;
     // Consumir para no reutilizar en otra fila
     delete byN[n];
   }
@@ -465,7 +485,14 @@ function buildMatrix_(body) {
       map['Campaña'] = m ? m[1] : raw;
     })();
     if (map.Anexo == null) map.Anexo = map.Anexo || '';
-    if (map['Hora subida'] == null) map['Hora subida'] = '';
+    // Hora subida SIEMPRE (con o sin foto): client submittedAt o reloj Lima
+    (function () {
+      var hora = String(map['Hora subida'] || '').trim();
+      if (!hora) {
+        hora = horaSubidaFrom_(body.submittedAt) || limaStamp_();
+      }
+      map['Hora subida'] = hora;
+    })();
     // No escribir base64 en Sheets
     delete map.photoBase64;
     delete map._photo;
@@ -633,7 +660,13 @@ function readEvaluadores_() {
   if (last < 2) return out;
   var vals = sheet.getRange(2, 1, last - 1, EVAL_HEADERS.length).getValues();
   for (var i = 0; i < vals.length; i++) {
-    var dni = String(vals[i][0] || '').trim();
+    var rawDni = vals[i][0];
+    var dni = '';
+    if (typeof rawDni === 'number' && isFinite(rawDni)) {
+      dni = String(Math.round(rawDni));
+    } else {
+      dni = String(rawDni || '').replace(/\.0+$/, '').replace(/\D/g, '');
+    }
     var nombre = String(vals[i][1] || '').trim();
     if (!dni && !nombre) continue;
     out.push({

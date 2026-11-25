@@ -263,7 +263,9 @@ QB.Data = (() => {
         if (Array.isArray(lotesJson) && lotesJson.length) {
           buildLoteCatalog(lotesJson);
         }
-        if (evalJson?.byDni && Object.keys(evalJson.byDni).length) {
+        // JSON embebido solo si aún no hay sync de la hoja Evaluadores
+        const hasSheetCache = restoreEvaluadoresSheetCache_();
+        if (!hasSheetCache && evalJson?.byDni && Object.keys(evalJson.byDni).length) {
           evaluadores = Object.assign({}, evalJson.byDni);
         }
         applySeed_();
@@ -469,6 +471,81 @@ QB.Data = (() => {
     return ok && Object.keys(evaluadores).length > 0;
   }
 
+  /** Reemplaza el catálogo local con la hoja Evaluadores (solo activos). */
+  function setEvaluadoresFromSheet_(list) {
+    const map = {};
+    (list || []).forEach((e) => {
+      if (!e) return;
+      if (e.activo === false || e.activo === 0 || e.activo === "0") return;
+      let dni = String(e.dni || e.DNI || "").trim();
+      if (/^\d+\.0+$/.test(dni)) dni = dni.replace(/\.0+$/, "");
+      dni = dni.replace(/\D/g, "");
+      if (!/^\d{8}$/.test(dni)) return;
+      const nombre = String(e.nombre || e.Nombre || "").trim();
+      if (!nombre) return;
+      map[dni] = {
+        nombre,
+        rol: String(e.rol || "Evaluador").trim(),
+        modulo: String(e.modulo || "").trim(),
+      };
+    });
+    // Solo reemplaza si la hoja trajo gente (evita vaciar offline por error)
+    if (Object.keys(map).length) {
+      evaluadores = map;
+      try {
+        localStorage.setItem(
+          "qb_proy_eval_sheet",
+          JSON.stringify({ at: Date.now(), byDni: map })
+        );
+      } catch (_) {}
+      return true;
+    }
+    return false;
+  }
+
+  function restoreEvaluadoresSheetCache_() {
+    try {
+      const raw = JSON.parse(localStorage.getItem("qb_proy_eval_sheet") || "null");
+      if (!raw || !raw.byDni || typeof raw.byDni !== "object") return false;
+      // Caché de hoja ≤ 7 días
+      if (raw.at && Date.now() - Number(raw.at) > 7 * 24 * 60 * 60 * 1000) return false;
+      const keys = Object.keys(raw.byDni);
+      if (!keys.length) return false;
+      evaluadores = Object.assign({}, raw.byDni);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Trae evaluadores activos desde Apps Script y sustituye el JSON embebido.
+   * Así el filtro Historial no muestra gente borrada/inactiva de la hoja.
+   */
+  async function refreshEvaluadoresFromSheet(force) {
+    restoreEvaluadoresSheetCache_();
+    if (!navigator.onLine) return Object.keys(evaluadores).length > 0;
+    if (!QB.API || typeof QB.API.fetchEvaluadores !== "function") {
+      return Object.keys(evaluadores).length > 0;
+    }
+    if (!force) {
+      try {
+        const raw = JSON.parse(localStorage.getItem("qb_proy_eval_sheet") || "null");
+        if (raw && raw.at && Date.now() - Number(raw.at) < 5 * 60 * 1000) {
+          return true;
+        }
+      } catch (_) {}
+    }
+    try {
+      const data = await QB.API.fetchEvaluadores({ soloActivos: true, timeoutMs: 20000 });
+      if (!data || !data.ok) return Object.keys(evaluadores).length > 0;
+      setEvaluadoresFromSheet_(data.evaluadores || []);
+      return Object.keys(evaluadores).length > 0;
+    } catch (_) {
+      return Object.keys(evaluadores).length > 0;
+    }
+  }
+
   async function ensureCatalogs() {
     applySeed_();
     if (lotes.length > 0 && Object.keys(evaluadores).length > 0) return true;
@@ -590,11 +667,15 @@ QB.Data = (() => {
     return `${mod}T${String(tur).padStart(2, "0")}L${lote}`;
   }
 
+  // Prefiere última sincronización de hoja antes que el JSON embebido viejo
+  restoreEvaluadoresSheetCache_();
+
   return {
     load,
     isReady,
     ensureEvaluadores,
     ensureCatalogs,
+    refreshEvaluadoresFromSheet,
     loteOptions,
     findLote,
     loteMeta,

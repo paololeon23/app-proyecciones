@@ -1938,9 +1938,60 @@ QB.API = (() => {
     }
   }
 
+  /** GET hoja Evaluadores (Apps Script). Por defecto solo activos. */
+  async function fetchEvaluadores(opts) {
+    opts = opts || {};
+    const base = apiUrl_();
+    if (!base) return { ok: false, error: "Sin API_URL" };
+    if (!navigator.onLine) return { ok: false, offline: true, error: "Sin señal" };
+    const q = new URLSearchParams();
+    q.set("action", "evaluadores");
+    if (opts.soloActivos !== false) q.set("soloActivos", "1");
+    const sep = base.includes("?") ? "&" : "?";
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs || 20000);
+    try {
+      const res = await fetch(`${base}${sep}${q.toString()}`, {
+        method: "GET",
+        redirect: "follow",
+        cache: "no-store",
+        signal: ctrl.signal,
+      });
+      const text = await res.text();
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+      if (!json || json.ok === false) {
+        return {
+          ok: false,
+          error: (json && json.error) || "GET evaluadores falló",
+          status: res.status,
+        };
+      }
+      return {
+        ok: true,
+        total: json.total,
+        activos: json.activos,
+        sheet: json.sheet || "Evaluadores",
+        evaluadores: Array.isArray(json.evaluadores) ? json.evaluadores : [],
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err && err.name === "AbortError" ? "timeout" : String((err && err.message) || err),
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   return {
     submit,
     checkAcceso,
+    fetchEvaluadores,
     flushQueue,
     flushUntilEmpty,
     newClientId: cryptoRandom,

@@ -1,5 +1,5 @@
 /* Q Berries Proyecciones — Service Worker */
-const CACHE = "qb-proyecciones-v94";
+const CACHE = "qb-proyecciones-v96";
 const ASSETS = [
   "./",
   "./index.html",

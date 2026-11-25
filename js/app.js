@@ -170,6 +170,26 @@ QB.App = (() => {
     }
   }
 
+  /** yyyy-MM-dd HH:mm:ss en America/Lima (columna Hora subida) */
+  function limaNowStamp_() {
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Lima",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).formatToParts(new Date());
+      const get = (t) => (parts.find((p) => p.type === t) || {}).value || "";
+      return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
+    } catch {
+      return new Date().toISOString().slice(0, 19).replace("T", " ");
+    }
+  }
+
   /** Semana ISO (1–53) en America/Lima */
   function isoWeek_(fechaYYYYMMDD) {
     const s = String(fechaYYYYMMDD || todayISO_());
@@ -1736,6 +1756,7 @@ QB.App = (() => {
     const samples = ensureSamples_(cartilla).filter(sampleHasData_);
     const rows = [];
     const photos = [];
+    const horaSubida = limaNowStamp_();
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i] || emptySample_();
       const n = i + 1;
@@ -1755,7 +1776,8 @@ QB.App = (() => {
         Area: cartilla.area || "",
         Campaña: normalizeCampana_(cartilla.campana || defaultCampana_()),
         Anexo: "",
-        "Hora subida": "",
+        // Siempre: con o sin foto
+        "Hora subida": horaSubida,
       };
       (QB.SAMPLE_FIELDS || []).forEach((f) => {
         const v = s[f.id];
@@ -2482,6 +2504,14 @@ QB.App = (() => {
     };
     const afterLocal = () => {
       go();
+      // Actualiza evaluadores desde hoja (filtro Hist)
+      if (QB.Data && QB.Data.refreshEvaluadoresFromSheet) {
+        QB.Data.refreshEvaluadoresFromSheet(false)
+          .then(() => {
+            if (state.screen === "historial") syncHistFilterLabels_();
+          })
+          .catch(() => {});
+      }
       // GET hoja según filtros (fuerza si caché vacía)
       const forceGet = !remoteHistCache_ || !remoteHistCache_.length;
       refreshRemoteHistorial_(forceGet).then((ok) => {
@@ -2954,8 +2984,25 @@ QB.App = (() => {
     });
   }
 
-  function openHistEvalFilter_() {
+  async function openHistEvalFilter_() {
     if (!QB.PreciseSelect) return;
+    // Lista = hoja Evaluadores (activos). No el JSON embebido viejo.
+    if (QB.Data && QB.Data.refreshEvaluadoresFromSheet) {
+      try {
+        await QB.Data.refreshEvaluadoresFromSheet(true);
+      } catch (_) {}
+    }
+    // Si el DNI elegido ya no está en la hoja, limpia el filtro
+    if (
+      histFilters_.dni &&
+      QB.Data &&
+      QB.Data.personByDni &&
+      !QB.Data.personByDni("evaluador", histFilters_.dni)
+    ) {
+      histFilters_.dni = "";
+      histEvalUserCleared_ = true;
+      syncHistFilterLabels_();
+    }
     const opts = (q) => {
       const base =
         QB.Data && QB.Data.evaluadorOptions ? QB.Data.evaluadorOptions(q) : [];
