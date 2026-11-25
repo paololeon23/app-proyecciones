@@ -15,6 +15,8 @@ QB.App = (() => {
       evaluadorId: "",
       evaluadorNombre: "",
       campana: "",
+      fundoId: "",
+      fundoLabel: "",
       modulo: "",
       turno: "",
       loteId: "",
@@ -24,6 +26,7 @@ QB.App = (() => {
     muestraIndex: 0,
     saving: false,
   };
+  let cameraGuardUntil_ = 0;
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -108,7 +111,7 @@ QB.App = (() => {
       evaluadorId: "",
       evaluadorNombre: "",
       cartillaId: "proyecciones",
-      cartillaLabel: "Proyecciones",
+      cartillaLabel: "Fenología",
       modulo: "",
       turno: "",
       loteId: "",
@@ -117,49 +120,38 @@ QB.App = (() => {
       etapa: "",
       variedad: "",
       area: "",
-      campana: (QB.CONFIG && QB.CONFIG.CAMPANA_DEFAULT) || "2026",
+      campana: "",
       observacion: "",
       samples,
       ...(partial || {}),
     };
   }
 
+  /** Campaña = año calendario Lima. Al pasar a 2027 cambia sola. */
   function defaultCampana_() {
-    return (QB.CONFIG && QB.CONFIG.CAMPANA_DEFAULT) || "2026";
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Lima",
+        year: "numeric",
+      }).format(new Date());
+    } catch {
+      return String(new Date().getFullYear());
+    }
   }
 
   function normalizeCampana_(v) {
-    const s = String(v || "")
-      .trim()
-      .replace(/\s*[–—-]\s*[IVX]+$/i, "")
-      .replace(/\s+II$/i, "")
-      .replace(/\s+I$/i, "")
-      .trim();
-    if (!s) return defaultCampana_();
-    const m = s.match(/(20\d{2})/);
-    return m ? m[1] : defaultCampana_();
-  }
-
-  function campanaOptions_(query) {
-    const q = String(query || "").trim().toLowerCase();
-    const list = (QB.CAMPANAS || []).map((c) => ({
-      id: c.id,
-      label: c.label || c.id,
-      meta: "Campaña",
-    }));
-    if (!list.length) {
-      const d = defaultCampana_();
-      return [{ id: d, label: d, meta: "Campaña" }];
-    }
-    if (!q) return list;
-    return list.filter(
-      (o) => o.label.toLowerCase().includes(q) || o.id.toLowerCase().includes(q)
-    );
+    // Siempre el año en curso (sin selector)
+    return defaultCampana_();
   }
 
   function setCampanaLabel_(value) {
     const el = $("#sel-campana-label");
-    if (el) el.textContent = normalizeCampana_(value || defaultCampana_());
+    if (el) el.textContent = defaultCampana_();
+    const btn = $("#sel-campana");
+    if (btn) {
+      btn.setAttribute("aria-disabled", "true");
+      btn.tabIndex = -1;
+    }
   }
 
   function todayISO_() {
@@ -355,6 +347,10 @@ QB.App = (() => {
       if (gate) gate.hidden = false;
       id = "home";
     }
+    // Tras foto/cámara: no saltar a resumen/historial por ghost-click
+    if ((id === "resumen" || id === "historial") && Date.now() < cameraGuardUntil_) {
+      id = "cartilla";
+    }
     state.screen = id;
     $$(".screen").forEach((s) => s.classList.toggle("active", s.id === `screen-${id}`));
     document.body.dataset.qbScreen = id;
@@ -362,9 +358,11 @@ QB.App = (() => {
     if (id !== "cartilla") resetKeyboardBar_();
     // Asegura que las barras visibles reciban toques
     const unlocked = !!readSession_();
+    const guardOn = Date.now() < cameraGuardUntil_;
     $$("body > .form-actions").forEach((bar) => {
       const on =
         unlocked &&
+        !guardOn &&
         ((id === "home" && bar.classList.contains("proy-home")) ||
           (id === "cartilla" && bar.classList.contains("proy-cartilla")) ||
           (id === "resumen" && bar.classList.contains("proy-resumen")));
@@ -382,16 +380,43 @@ QB.App = (() => {
         "#screen-home > .form-actions, #screen-cartilla > .form-actions, #screen-resumen > .form-actions"
       )
       .forEach((bar) => {
-        document.body.appendChild(bar);
-      });
+      document.body.appendChild(bar);
+    });
     document.body.dataset.qbScreen = state.screen || "home";
   }
 
   /* ——— Local list (historial de cartillas guardadas) ——— */
+  /** Historial local en celular: máximo 18 h */
+  const LOCAL_LIST_TTL_MS_ = 18 * 60 * 60 * 1000;
+
+  function localEntryAtMs_(x) {
+    if (!x) return 0;
+    const n = Number(x.at);
+    if (Number.isFinite(n) && n > 0) return n;
+    const t = Date.parse(x.at || "");
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  function pruneLocalList18h_(list) {
+    const cut = Date.now() - LOCAL_LIST_TTL_MS_;
+    return (list || []).filter((x) => {
+      if (!x || !x.clientId) return false;
+      const at = localEntryAtMs_(x);
+      return at >= cut;
+    });
+  }
+
   function readLocalList_() {
     try {
       const raw = JSON.parse(localStorage.getItem(LOCAL_LIST_KEY) || "[]");
-      return Array.isArray(raw) ? raw : [];
+      const list = Array.isArray(raw) ? raw : [];
+      const fresh = pruneLocalList18h_(list);
+      if (fresh.length !== list.length) {
+        try {
+          localStorage.setItem(LOCAL_LIST_KEY, JSON.stringify(fresh.slice(0, 200)));
+        } catch (_) {}
+      }
+      return fresh;
     } catch {
       return [];
     }
@@ -399,8 +424,9 @@ QB.App = (() => {
 
   function writeLocalList_(list) {
     try {
-      localStorage.setItem(LOCAL_LIST_KEY, JSON.stringify(list.slice(0, 200)));
-          } catch (_) {}
+      const fresh = pruneLocalList18h_(list);
+      localStorage.setItem(LOCAL_LIST_KEY, JSON.stringify(fresh.slice(0, 200)));
+    } catch (_) {}
   }
 
   function upsertLocalList_(entry) {
@@ -426,6 +452,13 @@ QB.App = (() => {
     }
     if (changed) writeLocalList_(list);
     return list;
+  }
+
+  /** Envíos locales frescos (≤18 h), más reciente primero */
+  function localSendsLast18h_() {
+    return reconcileLocalListStatus_()
+      .filter((x) => x && x.clientId)
+      .sort((a, b) => localEntryAtMs_(b) - localEntryAtMs_(a));
   }
 
   function saveDraft_() {
@@ -690,14 +723,35 @@ QB.App = (() => {
     );
   }
 
+  function fundoOptions_(query) {
+    const q = String(query || "").trim().toLowerCase();
+    const list = (QB.FUNDOS || []).map((f) => ({
+      id: f.id,
+      label: f.label,
+      meta: f.meta || "Fundo",
+    }));
+    if (!q) return list;
+    return list.filter(
+      (o) => o.label.toLowerCase().includes(q) || String(o.id).toLowerCase().includes(q)
+    );
+  }
+
+  function fundoLabelFromId_(id) {
+    const hit = (QB.FUNDOS || []).find((f) => f.id === id);
+    return hit ? hit.label : "";
+  }
+
   function resetCreateForm_() {
     const prefs = readPrefs_();
     const defaultCartilla = (QB.CARTILLAS && QB.CARTILLAS[0]) || {
       id: "proyecciones",
-      label: "Proyecciones",
+      label: "Fenología",
     };
     const session = readSession_();
-    const campana = normalizeCampana_(prefs.campana || defaultCampana_());
+    const campana = defaultCampana_();
+    const fundoId = String((prefs && prefs.fundoId) || "").trim();
+    const fundoLabel =
+      String((prefs && prefs.fundoLabel) || "").trim() || fundoLabelFromId_(fundoId);
     // Tras guardar, módulo/turno/lote quedan vacíos para elegir de nuevo
     state.create = {
       evaluadorId: (session && session.dni) || "",
@@ -705,6 +759,8 @@ QB.App = (() => {
       cartillaId: defaultCartilla.id,
       cartillaLabel: defaultCartilla.label,
       campana,
+      fundoId,
+      fundoLabel,
       modulo: "",
       turno: "",
       loteId: "",
@@ -712,6 +768,7 @@ QB.App = (() => {
     };
     setSelectLabel($("#sel-cartilla"), defaultCartilla.label || "");
     setCampanaLabel_(campana);
+    setSelectLabel($("#sel-fundo"), fundoLabel || "");
     setSelectLabel($("#sel-modulo"), "");
     setSelectLabel($("#sel-turno"), "");
     setSelectLabel($("#sel-lote"), "");
@@ -722,15 +779,16 @@ QB.App = (() => {
       modulo: "",
       turno: "",
       cartillaId: "proyecciones",
-      cartillaLabel: "Proyecciones",
+      cartillaLabel: "Fenología",
     });
     state.create.modulo = "";
     state.create.turno = "";
     state.create.loteId = "";
     state.create.loteMeta = null;
     state.create.cartillaId = "proyecciones";
-    state.create.cartillaLabel = "Proyecciones";
-    setSelectLabel($("#sel-cartilla"), "Proyecciones");
+    state.create.cartillaLabel = "Fenología";
+    setSelectLabel($("#sel-cartilla"), "Fenología");
+    setSelectLabel($("#sel-fundo"), state.create.fundoLabel || "");
     setSelectLabel($("#sel-modulo"), "");
     setSelectLabel($("#sel-turno"), "");
     setSelectLabel($("#sel-lote"), "");
@@ -776,19 +834,6 @@ QB.App = (() => {
     }, 180);
   }
 
-  function openCampanaSelect() {
-    QB.PreciseSelect.open({
-      title: "Campaña",
-      hideSearch: true,
-      value: state.create.campana || defaultCampana_(),
-      getOptions: (q) => campanaOptions_(q),
-      onSelect: (opt) => {
-        state.create.campana = normalizeCampana_(opt.id || opt.label);
-        setCampanaLabel_(state.create.campana);
-      },
-    });
-  }
-
   function openCartillaSelect() {
     QB.PreciseSelect.open({
       title: "Cartilla",
@@ -808,12 +853,43 @@ QB.App = (() => {
     });
   }
 
+  function openFundoSelect() {
+    QB.PreciseSelect.open({
+      title: "Fundo",
+      hideSearch: true,
+      value: state.create.fundoId,
+      getOptions: (q) => fundoOptions_(q),
+      onSelect: (opt) => {
+        if (!opt) return;
+        const changed = String(state.create.fundoId || "") !== String(opt.id || "");
+        state.create.fundoId = opt.id;
+        state.create.fundoLabel = opt.label;
+        setSelectLabel($("#sel-fundo"), opt.label);
+        writePrefs_({ fundoId: opt.id, fundoLabel: opt.label });
+        // Al cambiar fundo, limpia módulo/turno/lote (catálogo filtrado)
+        if (changed) {
+          state.create.modulo = "";
+          state.create.turno = "";
+          state.create.loteId = "";
+          state.create.loteMeta = null;
+          setSelectLabel($("#sel-modulo"), "");
+          setSelectLabel($("#sel-turno"), "");
+          setSelectLabel($("#sel-lote"), "");
+        }
+      },
+    });
+  }
+
   function openModuloSelect() {
+    if (!state.create.fundoId) {
+      toast("Elige fundo primero", "warn");
+      return;
+    }
     QB.PreciseSelect.open({
       title: "Módulo",
       hideSearch: true,
       value: state.create.modulo,
-      getOptions: (q) => QB.Data.moduloOptions(q),
+      getOptions: (q) => QB.Data.moduloOptions(q, state.create.fundoId),
       onSelect: (opt) => {
         state.create.modulo = opt.id;
         state.create.turno = "";
@@ -827,6 +903,10 @@ QB.App = (() => {
   }
 
   function openTurnoSelect() {
+    if (!state.create.fundoId) {
+      toast("Elige fundo primero", "warn");
+      return;
+    }
     if (!state.create.modulo) {
       toast("Elige módulo primero", "warn");
       return;
@@ -835,7 +915,7 @@ QB.App = (() => {
       title: "Turno",
       hideSearch: true,
       value: state.create.turno,
-      getOptions: (q) => QB.Data.turnoOptions(state.create.modulo, q),
+      getOptions: (q) => QB.Data.turnoOptions(state.create.modulo, q, state.create.fundoId),
       onSelect: (opt) => {
         state.create.turno = opt.id;
         state.create.loteId = "";
@@ -847,6 +927,10 @@ QB.App = (() => {
   }
 
   function openLoteSelect() {
+    if (!state.create.fundoId) {
+      toast("Elige fundo primero", "warn");
+      return;
+    }
     if (!state.create.modulo || !state.create.turno) {
       toast("Elige módulo y turno primero", "warn");
       return;
@@ -856,7 +940,12 @@ QB.App = (() => {
       hideSearch: true,
       value: state.create.loteId,
       getOptions: (q) =>
-        QB.Data.lotesForModuloTurno(state.create.modulo, state.create.turno, q),
+        QB.Data.lotesForModuloTurno(
+          state.create.modulo,
+          state.create.turno,
+          q,
+          state.create.fundoId
+        ),
       onSelect: (opt) => {
         state.create.loteId = opt.id;
         const meta = QB.Data.loteMeta(opt.id);
@@ -897,6 +986,10 @@ QB.App = (() => {
       toast("Esa cartilla aún no está disponible", "warn");
       return;
     }
+    if (!c.fundoId) {
+      toast("Selecciona fundo", "warn");
+      return;
+    }
     if (!c.modulo) {
       toast("Selecciona módulo", "warn");
       return;
@@ -916,24 +1009,29 @@ QB.App = (() => {
       evaluadorNombre: c.evaluadorNombre,
       cartillaId: c.cartillaId,
       cartillaLabel: c.cartillaLabel,
+      fundoId: c.fundoId,
+      fundoLabel: c.fundoLabel,
       campana,
       modulo: c.modulo,
       turno: c.turno,
     });
+    const fundoLabel =
+      c.fundoLabel || fundoLabelFromId_(c.fundoId) || String(meta.etapa || "");
     const cartilla = emptyCartilla_({
       clientId: QB.API.newClientId(),
       fecha: todayISO_(),
       evaluadorId: c.evaluadorId,
       evaluadorNombre: c.evaluadorNombre,
       cartillaId: c.cartillaId,
-      cartillaLabel: c.cartillaLabel || "Proyecciones",
+      cartillaLabel: c.cartillaLabel || "Fenología",
       campana,
       modulo: QB.Data.normalizeModulo(meta.modulo || c.modulo),
       turno: String(meta.turno || c.turno),
       loteId: c.loteId,
       loteNum: String(meta.lote || ""),
       loteCode: QB.Data.formatLoteCode(meta) || String(meta.codLote || c.loteId),
-      etapa: meta.etapa || "",
+      etapa: fundoLabel,
+      fundo: fundoLabel,
       variedad: meta.variedad || "",
       area: meta.area != null && meta.area !== "" ? meta.area : "",
       observacion: "",
@@ -959,7 +1057,7 @@ QB.App = (() => {
     showScreen("cartilla");
     renderCartilla();
     saveDraft_();
-    setTimeout(() => {
+          setTimeout(() => {
       const btn = $("#btn-ir-resumen");
       if (btn) btn.style.pointerEvents = "";
     }, 700);
@@ -1022,6 +1120,8 @@ QB.App = (() => {
     if (!requireSession_()) return;
     if (!state.cartilla) return;
     if (Date.now() < cartillaReadyAt_) return;
+    // Ghost-click tras cerrar cámara / tomar foto
+    if (Date.now() < cameraGuardUntil_) return;
     const c = state.cartilla;
     pruneEmptySamples_(c);
     renderCartilla();
@@ -1136,7 +1236,7 @@ QB.App = (() => {
       });
       inp.addEventListener("keydown", (e) => {
         if (e.key !== "Enter") return;
-        e.preventDefault();
+      e.preventDefault();
         const next = fieldInputs[idx + 1] || $("#cartilla-obs");
         if (next) next.focus({ preventScroll: true });
       });
@@ -1245,7 +1345,27 @@ QB.App = (() => {
 
   let cameraStream_ = null;
 
+  function armCameraGuard_(ms) {
+    cameraGuardUntil_ = Date.now() + (ms || 900);
+    cartillaReadyAt_ = Math.max(cartillaReadyAt_, cameraGuardUntil_);
+    const resumenBtn = $("#btn-ir-resumen");
+    const bar = document.querySelector("body > .form-actions.proy-cartilla");
+    if (resumenBtn) {
+      resumenBtn.style.pointerEvents = "none";
+    setTimeout(() => {
+        if (resumenBtn) resumenBtn.style.pointerEvents = "";
+      }, ms || 900);
+    }
+    if (bar) {
+      bar.style.pointerEvents = "none";
+    setTimeout(() => {
+        if (bar && state.screen === "cartilla") bar.style.pointerEvents = "auto";
+      }, ms || 900);
+    }
+  }
+
   function stopCamera_() {
+    armCameraGuard_(950);
     if (cameraStream_) {
       try {
         cameraStream_.getTracks().forEach((t) => t.stop());
@@ -1328,10 +1448,18 @@ QB.App = (() => {
       if (!s.sampleId) s.sampleId = newSampleId_();
       saveDraft_();
       stopCamera_();
-      renderCartilla();
+      // Quedarse en cartilla llenando (no saltar a resumen por ghost-click)
+      if (state.cartilla) {
+        state.screen = "cartilla";
+        showScreen("cartilla");
+        renderCartilla();
+      }
+      // Después de showScreen (que re-habilita la barra): rearmar el bloqueo
+      armCameraGuard_(1100);
       toast(`Foto en muestra ${state.muestraIndex + 1} · con fecha y hora`, "ok");
     } catch (_) {
       toast("No se pudo guardar la foto", "error");
+      armCameraGuard_(700);
     } finally {
       setLoader(false);
     }
@@ -1362,10 +1490,37 @@ QB.App = (() => {
   function bindCameraSheet_() {
     if (bindCameraSheet_._done) return;
     bindCameraSheet_._done = true;
-    fastTap_($("#qb-camera-close"), () => stopCamera_());
-    fastTap_($("#qb-camera-shot"), () => captureCameraShot_());
+    const shot = $("#qb-camera-shot");
+    const closeBtn = $("#qb-camera-close");
+    // click nativo + stopPropagation: evita que el toque caiga en RESUMEN
+    if (shot) {
+      shot.addEventListener(
+        "click",
+        (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          captureCameraShot_();
+        },
+        true
+      );
+    }
+    if (closeBtn) {
+      closeBtn.addEventListener(
+        "click",
+        (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          stopCamera_();
+        },
+        true
+      );
+    }
     $("#qb-camera")?.addEventListener("click", (e) => {
-      if (e.target && e.target.id === "qb-camera") stopCamera_();
+      if (e.target && e.target.id === "qb-camera") {
+        e.preventDefault();
+        e.stopPropagation();
+        stopCamera_();
+      }
     });
   }
 
@@ -1656,8 +1811,9 @@ QB.App = (() => {
         area: c.area != null && c.area !== "" ? c.area : "",
         etapa: c.etapa || "",
         campana: normalizeCampana_(c.campana || defaultCampana_()),
-        cartillaLabel: c.cartillaLabel || "Proyecciones",
+        cartillaLabel: c.cartillaLabel || "Fenología",
         evaluador: payload.data.evaluador,
+        evaluadorId: dni,
         sampleCount: rows.length,
         samples: samplesForSave.map((s, i) => {
           const o = {
@@ -1783,6 +1939,193 @@ QB.App = (() => {
     return [p.date, p.time].filter(Boolean).join(", ");
   }
 
+  const LAST_SEND_PAGE_SIZE_ = 4;
+  let lastSendDetail_ = {
+    sends: [],
+    sendIndex: 0,
+    samplePage: 0,
+  };
+
+  function closeLastSendDetail_() {
+    const root = $("#qb-last-detail");
+    if (!root) return;
+    root.classList.remove("open");
+    setTimeout(() => {
+      root.hidden = true;
+    }, 160);
+  }
+
+  function lastSendFieldRows_() {
+    // Todos los items EXCEPTO E1–E5 (y sin foto)
+    const skip = new Set(["e1", "e2", "e3", "e4", "e5"]);
+    return (QB.SAMPLE_FIELDS || []).filter((f) => f && f.id && !skip.has(f.id));
+  }
+
+  function currentLastSendEntry_() {
+    const sends = lastSendDetail_.sends || [];
+    const i = Math.max(0, Math.min(sends.length - 1, Number(lastSendDetail_.sendIndex) || 0));
+    lastSendDetail_.sendIndex = i;
+    return sends[i] || null;
+  }
+
+  function paintLastSendHeader_(entry) {
+    const title = $("#qb-last-detail-title");
+    const sub = $("#qb-last-detail-sub");
+    if (!entry) {
+      if (title) title.textContent = "—";
+      if (sub) sub.textContent = "";
+      return;
+    }
+    const pending = pendingIds_();
+    const isPending = pending.has(entry.clientId) || entry.status === "pending";
+    const samples = Array.isArray(entry.samples) ? entry.samples : [];
+    const n = Number(entry.sampleCount) || samples.length || 0;
+    const parts = formatLastSendParts_(entry.at);
+    if (title) title.textContent = entry.loteCode || entry.cartillaLabel || "Cartilla";
+    if (sub) {
+      sub.textContent = [
+        entry.modulo ? `Mod ${entry.modulo}` : "",
+        entry.turno != null && entry.turno !== "" ? `T${entry.turno}` : "",
+        entry.fecha || parts.date || "",
+        parts.time || "",
+        isPending ? "Pendiente" : "Enviado",
+        n ? `${n} muestra${n === 1 ? "" : "s"}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
+  }
+
+  function updateLastSendNav_() {
+    const nav = $("#qb-last-nav");
+    const info = $("#qb-last-send-info");
+    const prev = $("#qb-last-send-prev");
+    const next = $("#qb-last-send-next");
+    const total = (lastSendDetail_.sends || []).length;
+    const idx = Math.max(0, Number(lastSendDetail_.sendIndex) || 0);
+    if (nav) nav.hidden = total <= 1;
+    if (info) info.textContent = total ? `${idx + 1} / ${total}` : "0 / 0";
+    if (prev) prev.disabled = idx <= 0;
+    if (next) next.disabled = idx >= total - 1;
+  }
+
+  function renderLastSendDetailPage_() {
+    const body = $("#qb-last-detail-body");
+    if (!body) return;
+    const entry = currentLastSendEntry_();
+    paintLastSendHeader_(entry);
+    updateLastSendNav_();
+    const samples = entry && Array.isArray(entry.samples) ? entry.samples : [];
+    lastSendDetail_.samples = samples;
+    const page = Math.max(0, Number(lastSendDetail_.samplePage) || 0);
+    const totalPages = Math.max(1, Math.ceil(samples.length / LAST_SEND_PAGE_SIZE_) || 1);
+    const safePage = Math.min(page, totalPages - 1);
+    lastSendDetail_.samplePage = safePage;
+    const start = safePage * LAST_SEND_PAGE_SIZE_;
+    const slice = samples.slice(start, start + LAST_SEND_PAGE_SIZE_);
+    const fields = lastSendFieldRows_();
+
+    if (!entry) {
+      body.innerHTML = `<p class="qb-last-empty">Sin envíos locales de las últimas 18 h.</p>`;
+      return;
+    }
+    if (!samples.length) {
+      body.innerHTML = `<p class="qb-last-empty">Sin muestras guardadas en este envío.</p>`;
+      return;
+    }
+
+    const articles = slice
+      .map((s, i) => {
+        const num = s && s.n != null ? s.n : start + i + 1;
+        const rows = fields
+          .map((f) => {
+            const raw =
+              s && s[f.id] != null && String(s[f.id]).trim() !== "" ? s[f.id] : "—";
+            return `<li><span>${escapeHtml(f.label || f.id)}</span><strong>${escapeHtml(
+              String(raw)
+            )}</strong></li>`;
+          })
+          .join("");
+        const obs = String((s && s.observacion) || "").trim();
+        return `<article class="qb-last-sample">
+          <header><strong>Muestra ${escapeHtml(String(num))}</strong></header>
+          <ul class="qb-last-list">${rows}</ul>
+          ${obs ? `<p class="qb-last-obs">${escapeHtml(obs)}</p>` : ""}
+        </article>`;
+      })
+      .join("");
+
+    const samplePager =
+      samples.length > LAST_SEND_PAGE_SIZE_
+        ? `<div class="qb-last-pager">
+            <button type="button" class="qb-last-page-btn" id="qb-last-sample-prev" ${
+              safePage <= 0 ? "disabled" : ""
+            }>Ant. muestras</button>
+            <span class="qb-last-page-info">${safePage + 1} / ${totalPages}</span>
+            <button type="button" class="qb-last-page-btn" id="qb-last-sample-next" ${
+              safePage >= totalPages - 1 ? "disabled" : ""
+            }>Sig. muestras</button>
+          </div>`
+        : "";
+
+    body.innerHTML = `${articles}${samplePager}`;
+    const sp = $("#qb-last-sample-prev");
+    const sn = $("#qb-last-sample-next");
+    if (sp) {
+      sp.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (lastSendDetail_.samplePage <= 0) return;
+        lastSendDetail_.samplePage -= 1;
+        renderLastSendDetailPage_();
+      };
+    }
+    if (sn) {
+      sn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const maxP = Math.max(1, Math.ceil(samples.length / LAST_SEND_PAGE_SIZE_)) - 1;
+        if (lastSendDetail_.samplePage >= maxP) return;
+        lastSendDetail_.samplePage += 1;
+        renderLastSendDetailPage_();
+      };
+    }
+  }
+
+  function shiftLastSend_(delta) {
+    const total = (lastSendDetail_.sends || []).length;
+    if (total <= 1) return;
+    const next = Math.max(0, Math.min(total - 1, (Number(lastSendDetail_.sendIndex) || 0) + delta));
+    if (next === lastSendDetail_.sendIndex) return;
+    lastSendDetail_.sendIndex = next;
+    lastSendDetail_.samplePage = 0;
+    renderLastSendDetailPage_();
+  }
+
+  function openLastSendDetail_() {
+    if (!requireSession_()) return;
+    const cardEl = $("#last-send-card");
+    if (!cardEl || !cardEl.classList.contains("has-data")) return;
+    const sends = localSendsLast18h_();
+    if (!sends.length) {
+      toast("Sin envíos locales de las últimas 18 h", "info");
+      return;
+    }
+    const clientId = String(cardEl.dataset.clientId || "").trim();
+    let sendIndex = 0;
+    if (clientId) {
+      const found = sends.findIndex((x) => String(x.clientId) === clientId);
+      if (found >= 0) sendIndex = found;
+    }
+    const root = $("#qb-last-detail");
+    if (!root) return;
+
+    lastSendDetail_ = { sends, sendIndex, samplePage: 0 };
+    renderLastSendDetailPage_();
+    root.hidden = false;
+    requestAnimationFrame(() => root.classList.add("open"));
+  }
+
   function renderLastSend_() {
     const titleEl = $("#last-send-title");
     const typeEl = $("#last-send-type");
@@ -1804,7 +2147,7 @@ QB.App = (() => {
       titleEl.textContent = latest.loteCode || latest.cartillaLabel || "Cartilla";
       if (typeEl) {
         typeEl.hidden = false;
-        typeEl.textContent = latest.cartillaLabel || "Proyecciones";
+        typeEl.textContent = latest.cartillaLabel || "Fenología";
       }
       const line1 = [latest.fecha || "", parts.date].filter(Boolean).join(" · ");
       const line2 = [parts.time, samplesTxt].filter(Boolean).join(" · ");
@@ -1830,6 +2173,10 @@ QB.App = (() => {
       if (cardEl) {
         cardEl.classList.add("has-data");
         cardEl.dataset.state = isPending ? "pending" : "sent";
+        cardEl.dataset.clientId = latest.clientId || "";
+        cardEl.setAttribute("role", "button");
+        cardEl.tabIndex = 0;
+        cardEl.setAttribute("aria-label", "Ver resumen de muestras enviadas");
       }
       return;
     }
@@ -1839,7 +2186,7 @@ QB.App = (() => {
       titleEl.textContent = "Sincronización reciente";
       if (typeEl) {
         typeEl.hidden = false;
-        typeEl.textContent = "Proyecciones";
+        typeEl.textContent = "Fenología";
       }
       textEl.innerHTML = "";
       const a = document.createElement("span");
@@ -1860,6 +2207,9 @@ QB.App = (() => {
       if (cardEl) {
         cardEl.classList.add("has-data");
         cardEl.dataset.state = "sent";
+        cardEl.dataset.clientId = "";
+        cardEl.removeAttribute("role");
+        cardEl.removeAttribute("tabindex");
       }
       return;
     }
@@ -1874,6 +2224,9 @@ QB.App = (() => {
     if (cardEl) {
       cardEl.classList.remove("has-data");
       cardEl.dataset.state = "empty";
+      cardEl.dataset.clientId = "";
+      cardEl.removeAttribute("role");
+      cardEl.removeAttribute("tabindex");
     }
   }
 
@@ -2048,18 +2401,27 @@ QB.App = (() => {
 
   function openHistorial() {
     if (!requireSession_()) return;
+    if (Date.now() < cameraGuardUntil_) return;
     closeKgDetail_();
     historialReadyAt_ = Date.now() + 750;
     showScreen("historial");
     const go = () => {
+      initHistFiltersDefault_();
       renderHistorial();
       updateOnlineUi();
       updatePendingUi();
     };
-    if (QB.Data && QB.Data.ensureCatalogs) {
-      Promise.resolve(QB.Data.ensureCatalogs()).then(go).catch(go);
-    } else {
+    const afterLocal = () => {
       go();
+      // GET hoja Proyecciones según filtros (fechas → internet)
+      refreshRemoteHistorial_(false).then((ok) => {
+        if (ok && state.screen === "historial") renderHistorial();
+      });
+    };
+    if (QB.Data && QB.Data.ensureCatalogs) {
+      Promise.resolve(QB.Data.ensureCatalogs()).then(afterLocal).catch(afterLocal);
+    } else {
+      afterLocal();
     }
   }
 
@@ -2085,17 +2447,39 @@ QB.App = (() => {
     return readPesoPref_();
   }
 
+  function stageFieldKeys_(fieldId) {
+    const id = String(fieldId || "");
+    const keys = [id];
+    const stages = QB.HIST_KG_STAGES || [];
+    const fields = QB.SAMPLE_FIELDS || [];
+    stages.forEach((st) => {
+      if (st.id === id || st.sheet === id) {
+        keys.push(st.id, st.sheet);
+      }
+    });
+    fields.forEach((f) => {
+      if (f.id === id || f.sheet === id) {
+        keys.push(f.id, f.sheet);
+      }
+    });
+    return [...new Set(keys.filter(Boolean))];
+  }
+
   function avgStage_(samples, fieldId) {
     if (!Array.isArray(samples) || !samples.length) return null;
+    const keys = stageFieldKeys_(fieldId);
     let sum = 0;
     let n = 0;
     samples.forEach((s) => {
-      const raw =
-        s && s[fieldId] != null
-          ? s[fieldId]
-          : s && s[String(fieldId).toUpperCase()] != null
-            ? s[String(fieldId).toUpperCase()]
-            : "";
+      if (!s || typeof s !== "object") return;
+      let raw = "";
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (s[k] != null && String(s[k]).trim() !== "") {
+          raw = s[k];
+          break;
+        }
+      }
       const v = Number(String(raw).replace(",", "."));
       if (Number.isFinite(v)) {
         sum += v;
@@ -2107,10 +2491,11 @@ QB.App = (() => {
 
   function stageKg_(avgCount, area) {
     if (avgCount == null) return 0;
+    // Sin área real no inventamos 1 ha: kg debe reflejar dato verdadero
+    const a = area != null && area > 0 ? area : null;
+    if (a == null) return 0;
     const peso = histPeso_();
     const dens = histDensidad_();
-    // Sin área en catálogo: proyecta como 1 ha para no dejar la tabla en cero
-    const a = area != null && area > 0 ? area : 1;
     return (avgCount * peso * dens) / 1000 * a;
   }
 
@@ -2204,6 +2589,425 @@ QB.App = (() => {
     }
   }
 
+  let remoteHistCache_ = null;
+  let remoteHistFetchAt_ = 0;
+  let remoteHistBusy_ = false;
+
+  function samplesRichness_(samples) {
+    if (!Array.isArray(samples) || !samples.length) return 0;
+    const keys = [
+      "e3",
+      "e4",
+      "e5",
+      "e1",
+      "e2",
+      "boton_floral",
+      "flor",
+      "cuaja",
+      "yema_productiva",
+      "n_ramas",
+    ];
+    let score = samples.length * 20;
+    samples.forEach((s) => {
+      if (!s) return;
+      keys.forEach((k) => {
+        if (s[k] != null && String(s[k]).trim() !== "") score += 2;
+      });
+    });
+    return score;
+  }
+
+  function pickRicherSamples_(a, b) {
+    const sa = samplesRichness_(a);
+    const sb = samplesRichness_(b);
+    if (sb > sa) return Array.isArray(b) ? b : [];
+    if (sa > 0) return Array.isArray(a) ? a : [];
+    return Array.isArray(b) && b.length ? b : Array.isArray(a) ? a : [];
+  }
+
+  function loteKeyHist_(h) {
+    const mod = String((h && h.modulo) || "—");
+    const tur = String((h && (h.turno != null ? h.turno : "—")) || "—");
+    const lote = String((h && (h.loteCode || h.lote)) || "—");
+    const fecha = String((h && h.fecha) || "").slice(0, 10);
+    return `${fecha}|${mod}|${tur}|${lote}`;
+  }
+
+  function histEntryDni_(h) {
+    if (!h) return "";
+    let d = String(h.evaluadorId || h.dni || "").replace(/\D/g, "");
+    if (/^\d{8}$/.test(d)) return d;
+    const ev = String(h.evaluador || "");
+    const m = ev.match(/(\d{8})/);
+    if (m) return m[1];
+    const cid = String(h.clientId || "");
+    const m2 = cid.match(/\|(\d{8})$/);
+    if (m2) return m2[1];
+    return "";
+  }
+
+  function histEntryDay_(h) {
+    if (!h) return "";
+    const f = String(h.fecha || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(f)) return f.slice(0, 10);
+    try {
+      if (QB.API && QB.API.localDayKey) return QB.API.localDayKey(h.at) || "";
+    } catch (_) {}
+    const at = String(h.at || "");
+    if (/^\d{4}-\d{2}-\d{2}/.test(at)) return at.slice(0, 10);
+    return "";
+  }
+
+  const histFilters_ = {
+    modulo: "",
+    dni: "",
+    desde: "",
+    hasta: "",
+  };
+
+  function readHistFiltersFromUi_() {
+    // módulo / evaluador / fechas viven en histFilters_ (botones formales)
+    return { ...histFilters_ };
+  }
+
+  function fmtFechaUi_(iso) {
+    const s = String(iso || "").slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return "";
+    return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+
+  function syncHistFilterLabels_() {
+    const modBtn = $("#hist-filtro-modulo");
+    const evalBtn = $("#hist-filtro-eval");
+    const desdeBtn = $("#hist-filtro-desde");
+    const hastaBtn = $("#hist-filtro-hasta");
+    setSelectLabel(modBtn, histFilters_.modulo || "", !histFilters_.modulo);
+    if (histFilters_.dni) {
+      const p =
+        QB.Data && QB.Data.personByDni
+          ? QB.Data.personByDni("evaluador", histFilters_.dni)
+          : null;
+      const nom =
+        (p && (QB.Data.shortName ? QB.Data.shortName(p.nombre) : p.nombre)) ||
+        histFilters_.dni;
+      setSelectLabel(evalBtn, nom, false);
+    } else {
+      setSelectLabel(evalBtn, "", true);
+    }
+    setSelectLabel(desdeBtn, fmtFechaUi_(histFilters_.desde), !histFilters_.desde);
+    setSelectLabel(hastaBtn, fmtFechaUi_(histFilters_.hasta), !histFilters_.hasta);
+  }
+
+  /* ——— Calendario formal (reemplaza input type=date nativo) ——— */
+  let histDateField_ = "desde";
+  let histDateView_ = { y: 2026, m: 0 };
+  let histDateOpenedAt_ = 0;
+
+  function closeHistDatePicker_() {
+    const root = $("#hist-date-overlay");
+    if (!root) return;
+    root.classList.remove("open", "is-open");
+    setTimeout(() => {
+      root.hidden = true;
+    }, 180);
+  }
+
+  function renderHistDateGrid_() {
+    const grid = $("#hist-date-grid");
+    const monthEl = $("#hist-date-month");
+    if (!grid) return;
+    const y = histDateView_.y;
+    const m = histDateView_.m;
+    const monthNames = [
+      "enero",
+      "febrero",
+      "marzo",
+      "abril",
+      "mayo",
+      "junio",
+      "julio",
+      "agosto",
+      "septiembre",
+      "octubre",
+      "noviembre",
+      "diciembre",
+    ];
+    if (monthEl) monthEl.textContent = `${monthNames[m]} de ${y}`;
+    const first = new Date(y, m, 1);
+    const startDow = first.getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const prevDays = new Date(y, m, 0).getDate();
+    const selected = String(
+      histDateField_ === "hasta" ? histFilters_.hasta : histFilters_.desde || ""
+    ).slice(0, 10);
+    const today = todayISO_();
+    const cells = [];
+    for (let i = 0; i < 42; i++) {
+      let day;
+      let cellY = y;
+      let cellM = m;
+      let muted = false;
+      if (i < startDow) {
+        day = prevDays - startDow + i + 1;
+        cellM = m - 1;
+        if (cellM < 0) {
+          cellM = 11;
+          cellY = y - 1;
+        }
+        muted = true;
+      } else if (i >= startDow + daysInMonth) {
+        day = i - (startDow + daysInMonth) + 1;
+        cellM = m + 1;
+        if (cellM > 11) {
+          cellM = 0;
+          cellY = y + 1;
+        }
+        muted = true;
+      } else {
+        day = i - startDow + 1;
+      }
+      const iso = `${cellY}-${String(cellM + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const cls = [
+        "hist-date-day",
+        muted ? "is-muted" : "",
+        iso === today ? "is-today" : "",
+        iso === selected ? "is-selected" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      cells.push(
+        `<button type="button" class="${cls}" data-iso="${escapeAttr(iso)}">${day}</button>`
+      );
+    }
+    grid.innerHTML = cells.join("");
+    grid.querySelectorAll("[data-iso]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const iso = btn.getAttribute("data-iso") || "";
+        if (histDateField_ === "hasta") histFilters_.hasta = iso;
+        else histFilters_.desde = iso;
+        syncHistFilterLabels_();
+        closeHistDatePicker_();
+      });
+    });
+  }
+
+  function openHistDatePicker_(field) {
+    histDateField_ = field === "hasta" ? "hasta" : "desde";
+    const cur =
+      histDateField_ === "hasta" ? histFilters_.hasta : histFilters_.desde;
+    const base = cur && /^\d{4}-\d{2}-\d{2}/.test(cur) ? cur : todayISO_();
+    const parts = base.split("-");
+    histDateView_ = {
+      y: Number(parts[0]) || new Date().getFullYear(),
+      m: Math.max(0, (Number(parts[1]) || 1) - 1),
+    };
+    const root = $("#hist-date-overlay");
+    const title = $("#hist-date-title");
+    if (!root) return;
+    // Fuera del panel-scroll: fixed a pantalla completa
+    if (root.parentElement !== document.body) {
+      document.body.appendChild(root);
+    }
+    if (title) title.textContent = histDateField_ === "hasta" ? "Hasta" : "Desde";
+    histDateOpenedAt_ = Date.now();
+    renderHistDateGrid_();
+    root.hidden = false;
+    // .overlay exige .open (opacity/pointer-events); .is-open anima el sheet
+    requestAnimationFrame(() => {
+      root.classList.add("open", "is-open");
+    });
+  }
+
+  function bindHistDatePicker_() {
+    if (bindHistDatePicker_._done) return;
+    bindHistDatePicker_._done = true;
+    fastTap_($("#hist-date-close"), closeHistDatePicker_);
+    fastTap_($("#hist-date-prev"), () => {
+      histDateView_.m -= 1;
+      if (histDateView_.m < 0) {
+        histDateView_.m = 11;
+        histDateView_.y -= 1;
+      }
+      renderHistDateGrid_();
+    });
+    fastTap_($("#hist-date-next"), () => {
+      histDateView_.m += 1;
+      if (histDateView_.m > 11) {
+        histDateView_.m = 0;
+        histDateView_.y += 1;
+      }
+      renderHistDateGrid_();
+    });
+    fastTap_($("#hist-date-today"), () => {
+      const t = todayISO_();
+      if (histDateField_ === "hasta") histFilters_.hasta = t;
+      else histFilters_.desde = t;
+      syncHistFilterLabels_();
+      closeHistDatePicker_();
+    });
+    fastTap_($("#hist-date-clear"), () => {
+      if (histDateField_ === "hasta") histFilters_.hasta = "";
+      else histFilters_.desde = "";
+      syncHistFilterLabels_();
+      closeHistDatePicker_();
+    });
+    $("#hist-date-overlay")?.addEventListener("click", (e) => {
+      if (e.target && e.target.id === "hist-date-overlay") {
+        if (Date.now() - histDateOpenedAt_ < 450) return;
+        closeHistDatePicker_();
+      }
+    });
+  }
+
+  function openHistModuloFilter_() {
+    if (!QB.PreciseSelect) return;
+    const opts = () => {
+      const base =
+        QB.Data && QB.Data.moduloOptions ? QB.Data.moduloOptions("") : [];
+      return [{ id: "", label: "Todos", meta: "Sin filtro" }, ...base];
+    };
+    QB.PreciseSelect.open({
+      title: "Módulo",
+      hideSearch: true,
+      value: histFilters_.modulo || "",
+      getOptions: opts,
+      onSelect: (opt) => {
+        histFilters_.modulo = String((opt && opt.id) || "").trim();
+        syncHistFilterLabels_();
+        if (state.screen === "historial") renderHistorial();
+      },
+    });
+  }
+
+  function openHistEvalFilter_() {
+    if (!QB.PreciseSelect) return;
+    const opts = (q) => {
+      const base =
+        QB.Data && QB.Data.evaluadorOptions ? QB.Data.evaluadorOptions(q) : [];
+      const mapped = base.map((o) => ({
+        id: String(o.dni || "").replace(/\D/g, ""),
+        label: o.nombreCorto || o.nombre || o.label || o.dni,
+        meta: o.meta || (o.dni ? `DNI · ${o.dni}` : ""),
+        dni: String(o.dni || "").replace(/\D/g, ""),
+      }));
+      return [{ id: "", label: "Todos", meta: "Sin filtro" }, ...mapped];
+    };
+    QB.PreciseSelect.open({
+      title: "Evaluador",
+      value: histFilters_.dni || "",
+      getOptions: opts,
+      onSelect: (opt) => {
+        histFilters_.dni = String((opt && (opt.dni || opt.id)) || "").replace(/\D/g, "");
+        syncHistFilterLabels_();
+        if (state.screen === "historial") renderHistorial();
+      },
+    });
+  }
+
+  function filterHistorialByFilters_(list) {
+    const f = histFilters_;
+    const mod = String(f.modulo || "").trim().toUpperCase();
+    const dni = String(f.dni || "").replace(/\D/g, "");
+    const desde = String(f.desde || "").slice(0, 10);
+    const hasta = String(f.hasta || "").slice(0, 10);
+    return (list || []).filter((h) => {
+      const day = histEntryDay_(h);
+      if (desde && day && day < desde) return false;
+      if (hasta && day && day > hasta) return false;
+      if (desde && !day) return false;
+      if (mod) {
+        const hm = String(h.modulo || "")
+          .trim()
+          .toUpperCase();
+        if (!hm || hm.indexOf(mod) === -1) return false;
+      }
+      if (dni) {
+        if (histEntryDni_(h) !== dni) return false;
+      }
+      return true;
+    });
+  }
+
+  function populateHistFilterOptions_() {
+    syncHistFilterLabels_();
+  }
+
+  function initHistFiltersDefault_() {
+    const session = readSession_();
+    const today = todayISO_();
+    if (!histFilters_.desde) histFilters_.desde = today;
+    if (!histFilters_.hasta) histFilters_.hasta = today;
+    if (!histFilters_.dni && session && session.dni) {
+      histFilters_.dni = String(session.dni).replace(/\D/g, "");
+    }
+    populateHistFilterOptions_();
+  }
+
+  async function refreshRemoteHistorial_(force) {
+    if (!QB.API || !QB.API.fetchProyeccionesList) return false;
+    if (!navigator.onLine) return false;
+    if (remoteHistBusy_) return false;
+    readHistFiltersFromUi_();
+    if (!force && remoteHistCache_ && Date.now() - remoteHistFetchAt_ < 45000) {
+      return true;
+    }
+    remoteHistBusy_ = true;
+    try {
+      const f = histFilters_;
+      const campana = defaultCampana_();
+      const data = await QB.API.fetchProyeccionesList({
+        limit: 2000,
+        campana,
+        dni: f.dni || undefined,
+        modulo: f.modulo || undefined,
+        desde: f.desde || undefined,
+        hasta: f.hasta || undefined,
+        timeoutMs: 28000,
+      });
+      if (!data || !data.ok) return false;
+      const mapped = QB.API.sheetRegistrosToHistory
+        ? QB.API.sheetRegistrosToHistory(data.registros || [])
+        : [];
+      remoteHistCache_ = filterHistorialByFilters_(mapped);
+      remoteHistFetchAt_ = Date.now();
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      remoteHistBusy_ = false;
+    }
+  }
+
+  async function applyHistFilters_() {
+    readHistFiltersFromUi_();
+    const f = histFilters_;
+    const today = todayISO_();
+    const needsNet =
+      (f.desde && f.desde !== today) ||
+      (f.hasta && f.hasta !== today) ||
+      (f.desde && f.hasta && f.desde !== f.hasta);
+    if (needsNet && !navigator.onLine) {
+      toast("Las fechas requieren internet para traer datos", "warn");
+      return;
+    }
+    if (!navigator.onLine && needsNet) return;
+    setLoader(true, needsNet || navigator.onLine ? "Trayendo datos…" : "Filtrando…");
+    try {
+      if (navigator.onLine) {
+        const ok = await refreshRemoteHistorial_(true);
+        if (!ok && needsNet) {
+          toast("No se pudo traer datos. Revisa la conexión", "warn");
+        }
+      }
+      if (state.screen === "historial") renderHistorial();
+    } finally {
+      setLoader(false);
+    }
+  }
+
   function collectHistorialRaw_() {
     let history = [];
     try {
@@ -2217,31 +3021,41 @@ QB.App = (() => {
     readLocalList_().forEach((x) => {
       if (x && x.clientId) localById[x.clientId] = x;
     });
-    const localSent = readLocalList_()
+      const localSent = readLocalList_()
       .filter((x) => x && !pendingIds.has(x.clientId))
-      .map((x) => ({
-        clientId: x.clientId,
-        status: "sent",
-        at: x.at ? new Date(x.at).toISOString() : "",
-        fecha: x.fecha || "",
-        lote: x.loteCode || "",
-        loteCode: x.loteCode || "",
-        loteNum: x.loteNum || "",
-        modulo: x.modulo || "",
-        turno: x.turno || "",
-        variedad: x.variedad || "",
-        area: x.area,
-        samples: Array.isArray(x.samples) ? x.samples : [],
-        sampleCount: x.sampleCount || 0,
-      }));
+      .map((x) => {
+        const dni =
+          String(x.evaluadorId || "").replace(/\D/g, "") ||
+          (String(x.evaluador || "").match(/(\d{8})/) || [])[1] ||
+          "";
+        return {
+          clientId: x.clientId,
+          status: "sent",
+          source: "local",
+          at: x.at ? new Date(x.at).toISOString() : "",
+          fecha: x.fecha || "",
+          lote: x.loteCode || "",
+          loteCode: x.loteCode || "",
+          loteNum: x.loteNum || "",
+          modulo: x.modulo || "",
+          turno: x.turno || "",
+          variedad: x.variedad || "",
+          area: x.area,
+          evaluador: x.evaluador || "",
+          evaluadorId: dni,
+          dni,
+          samples: Array.isArray(x.samples) ? x.samples : [],
+          sampleCount: x.sampleCount || 0,
+        };
+      });
     history = history.map((h) => {
       const loc = localById[h.clientId];
       if (!loc) return h;
       return {
         ...h,
-        samples: (h.samples && h.samples.length ? h.samples : loc.samples) || [],
+        samples: pickRicherSamples_(h.samples, loc.samples),
         lote: h.lote || loc.loteCode || "",
-        loteCode: h.lote || loc.loteCode || "",
+        loteCode: h.loteCode || h.lote || loc.loteCode || "",
         loteNum: h.loteNum || loc.loteNum || "",
         modulo: h.modulo || loc.modulo || "",
         turno: h.turno || loc.turno || "",
@@ -2254,6 +3068,18 @@ QB.App = (() => {
       if (id && !seen.has(id)) {
         seen.add(id);
         history.push(s);
+      } else if (id) {
+        const idx = history.findIndex((h) => String(h.clientId || "") === id);
+        if (idx >= 0) {
+          history[idx] = {
+            ...history[idx],
+            samples: pickRicherSamples_(history[idx].samples, s.samples),
+            area:
+              history[idx].area != null && history[idx].area !== ""
+                ? history[idx].area
+                : s.area,
+          };
+        }
       }
     });
     readLocalList_().forEach((x) => {
@@ -2261,14 +3087,67 @@ QB.App = (() => {
       const id = String(x.clientId);
       if (seen.has(id)) return;
       seen.add(id);
+      const dni =
+        String(x.evaluadorId || "").replace(/\D/g, "") ||
+        (String(x.evaluador || "").match(/(\d{8})/) || [])[1] ||
+        "";
       history.push({
         ...x,
         status: "pending",
+        source: "local-pending",
         lote: x.loteCode || "",
+        loteCode: x.loteCode || x.lote || "",
         at: x.at ? new Date(x.at).toISOString() : "",
+        evaluadorId: dni,
+        dni,
       });
     });
-    return history;
+
+    // GET hoja = fuente de verdad para enviados (E3/E4/E5 reales)
+    if (Array.isArray(remoteHistCache_) && remoteHistCache_.length) {
+      const pendingKeys = new Set();
+      history.forEach((h) => {
+        if (h && (h.status === "pending" || pendingIds.has(h.clientId))) {
+          pendingKeys.add(loteKeyHist_(h));
+        }
+      });
+      const byKey = new Map();
+      history.forEach((h, i) => {
+        byKey.set(loteKeyHist_(h), i);
+      });
+      remoteHistCache_.forEach((remote) => {
+        const key = loteKeyHist_(remote);
+        if (pendingKeys.has(key)) return; // no pisar pendiente local
+        const idx = byKey.get(key);
+        if (idx == null) {
+          history.push(remote);
+          byKey.set(key, history.length - 1);
+      return;
+    }
+        const cur = history[idx];
+        // Preferir GET de hoja si trae muestras más completas o es source sheet
+        const preferRemote =
+          remote.source === "sheet" &&
+          samplesRichness_(remote.samples) >= samplesRichness_(cur.samples);
+        if (preferRemote || samplesRichness_(remote.samples) > samplesRichness_(cur.samples)) {
+          history[idx] = {
+            ...cur,
+            ...remote,
+            clientId: cur.clientId && !String(cur.clientId).startsWith("sheet_")
+              ? cur.clientId
+              : remote.clientId,
+            status: cur.status === "pending" ? "pending" : "sent",
+            samples: pickRicherSamples_(remote.samples, cur.samples),
+            area:
+              remote.area != null && remote.area !== ""
+                ? remote.area
+                : cur.area,
+          };
+        }
+      });
+    }
+    // Filtros activos: módulo · evaluador · desde/hasta
+    return filterHistorialByFilters_(history);
   }
 
   /** Última cartilla por módulo+turno+lote (no mezclar envíos viejos). */
@@ -2290,6 +3169,50 @@ QB.App = (() => {
         return stageKg_(avg2, enriched.area);
       });
       const total = kgs.reduce((a, b) => a + b, 0);
+      const samples = h.samples || [];
+      // N° Muestra = cantidad de filas/muestras de la cartilla (denominador del promedio)
+      let nMuestras = samples.length;
+      const declared = Number(h.sampleCount);
+      if (Number.isFinite(declared) && declared > nMuestras) nMuestras = declared;
+      samples.forEach((s) => {
+        const nn = Number(s && s.n);
+        if (Number.isFinite(nn) && nn > nMuestras) nMuestras = nn;
+      });
+      if (!nMuestras) nMuestras = 0;
+      // Promedio = suma(valores) / N° muestras (vacío cuenta como 0)
+      const stageAvgPack_ = (id) => {
+        let sum = 0;
+        const keys = stageFieldKeys_(id);
+        samples.forEach((s) => {
+          if (!s) return;
+          let raw = "";
+          for (let i = 0; i < keys.length; i++) {
+            if (s[keys[i]] != null && String(s[keys[i]]).trim() !== "") {
+              raw = s[keys[i]];
+              break;
+            }
+          }
+          const v = Number(String(raw).replace(",", "."));
+          sum += Number.isFinite(v) ? v : 0;
+        });
+        return {
+          avg: nMuestras > 0 ? sum / nMuestras : null,
+          n: nMuestras,
+          sum,
+        };
+      };
+      const a1 = stageAvgPack_("e1");
+      const a2 = stageAvgPack_("e2");
+      const a3 = stageAvgPack_("e3");
+      const a4 = stageAvgPack_("e4");
+      const a5 = stageAvgPack_("e5");
+      // Total = suma de promedios E1+E2+E3+E4+E5 (ya no kg)
+      const totalE =
+        (Number(a1.avg) || 0) +
+        (Number(a2.avg) || 0) +
+        (Number(a3.avg) || 0) +
+        (Number(a4.avg) || 0) +
+        (Number(a5.avg) || 0);
       latest.set(key, {
         id: key,
         clientId: h.clientId || "",
@@ -2300,9 +3223,25 @@ QB.App = (() => {
         status: enriched.status,
         at,
         fecha: enriched.fecha || h.fecha || "",
-        sampleCount: Number(h.sampleCount) || (Array.isArray(h.samples) ? h.samples.length : 0) || 0,
+        sampleCount: nMuestras,
         kgs,
-        total,
+        totalKg: total,
+        total: totalE,
+        e1Avg: a1.avg,
+        e1N: a1.n,
+        e1Sum: a1.sum,
+        e2Avg: a2.avg,
+        e2N: a2.n,
+        e2Sum: a2.sum,
+        e3Avg: a3.avg,
+        e3N: a3.n,
+        e3Sum: a3.sum,
+        e4Avg: a4.avg,
+        e4N: a4.n,
+        e4Sum: a4.sum,
+        e5Avg: a5.avg,
+        e5N: a5.n,
+        e5Sum: a5.sum,
         stages: stages.map((st, i) => ({
           label: st.label,
           kg: kgs[i],
@@ -2358,9 +3297,9 @@ QB.App = (() => {
           .join("")}
       </ul>
       <div class="qb-kg-detail-total">
-        <span>Total</span>
-        <strong>${fmtNum_(row.total, 2)} kg</strong>
-      </div>`;
+        <span>Total E1–E5</span>
+        <strong>${fmtNum_(row.total, 1)}</strong>
+        </div>`;
     root.hidden = false;
     requestAnimationFrame(() => root.classList.add("open"));
   }
@@ -2376,7 +3315,7 @@ QB.App = (() => {
       pesoInp.value = String(histPeso_());
     }
 
-    const pendingN = QB.API.pendingCount ? QB.API.pendingCount() : 0;
+    readHistFiltersFromUi_();
     const history = collectHistorialRaw_();
     const rows = buildKgRows_(history);
     histKgById_ = {};
@@ -2384,110 +3323,137 @@ QB.App = (() => {
       histKgById_[r.id] = r;
     });
 
-    let grandTotal = 0;
+    const promCell_ = (n) =>
+      `<td class="hist-kg-stage-cell"><strong>${fmtNum_(n, 1)}</strong></td>`;
+    const totalCell_ = (n) =>
+      `<td class="hist-kg-total-cell"><strong>${fmtNum_(n, 1)}</strong></td>`;
+    // Promedio = suma / N° muestras
+    const promByMuestras_ = (sum, nMuestras) =>
+      nMuestras > 0 ? sum / nMuestras : null;
+    // Total columna = E1+E2+E3+E4+E5 (promedios)
+    const sumE1aE5_ = (p1, p2, p3, p4, p5) =>
+      (Number(p1) || 0) +
+      (Number(p2) || 0) +
+      (Number(p3) || 0) +
+      (Number(p4) || 0) +
+      (Number(p5) || 0);
+
+    let g1 = 0;
+    let g2 = 0;
+    let g3 = 0;
+    let g4 = 0;
+    let g5 = 0;
+    let gN = 0;
     const byMod = new Map();
     rows.forEach((r) => {
-      grandTotal += r.total;
-      if (!byMod.has(r.mod)) byMod.set(r.mod, new Map());
-      const turMap = byMod.get(r.mod);
-      if (!turMap.has(r.tur)) turMap.set(r.tur, []);
-      turMap.get(r.tur).push(r);
+      const n = Number(r.sampleCount) || Number(r.e2N) || 0;
+      gN += n;
+      g1 += Number(r.e1Sum) || 0;
+      g2 += Number(r.e2Sum) || 0;
+      g3 += Number(r.e3Sum) || 0;
+      g4 += Number(r.e4Sum) || 0;
+      g5 += Number(r.e5Sum) || 0;
+      if (!byMod.has(r.mod)) byMod.set(r.mod, []);
+      byMod.get(r.mod).push(r);
     });
+    const grandP1 = promByMuestras_(g1, gN);
+    const grandP2 = promByMuestras_(g2, gN);
+    const grandP3 = promByMuestras_(g3, gN);
+    const grandP4 = promByMuestras_(g4, gN);
+    const grandP5 = promByMuestras_(g5, gN);
+    const grandTotal = sumE1aE5_(grandP1, grandP2, grandP3, grandP4, grandP5);
 
     const bodyRows = [];
     const mods = [...byMod.keys()].sort((a, b) => String(a).localeCompare(String(b), "es"));
     mods.forEach((mod) => {
-      const turMap = byMod.get(mod);
-      let modTot = 0;
-      const turBlocks = [];
-      const turs = [...turMap.keys()].sort((a, b) => String(a).localeCompare(String(b), "es"));
-      turs.forEach((tur) => {
-        const lotes = turMap.get(tur) || [];
-        let turTot = 0;
-        const groupId = `${mod}|${tur}`;
-        const loteRows = lotes.map((L) => {
-          turTot += L.total;
-          modTot += L.total;
-          return `<tr class="lote-row is-collapsed" data-tur-group="${escapeAttr(groupId)}" hidden>
-            <td>${escapeHtml(L.lote)}</td>
-            <td class="hist-kg-total-cell"><strong>${fmtNum_(L.total, 2)}</strong> <em>kg</em></td>
-            <td class="hist-kg-detail-cell"><button type="button" class="hist-kg-detail-btn" data-kg-open="${escapeAttr(
-              L.id
-            )}">Ver</button></td>
-          </tr>`;
-        });
-        turBlocks.push(
-          `<tr class="tur-row" data-tur-toggle="${escapeAttr(groupId)}" aria-expanded="false">
-            <td><span class="tur-caret" aria-hidden="true">▸</span> Turno ${escapeHtml(tur)} <em class="tur-count">${
-            lotes.length
-          } lote${lotes.length === 1 ? "" : "s"}</em></td>
-            <td class="hist-kg-total-cell"><strong>${fmtNum_(turTot, 2)}</strong> <em>kg</em></td>
-            <td class="hist-kg-detail-cell"><span class="hist-kg-muted">—</span></td>
-          </tr>${loteRows.join("")}`
-        );
+      const lotes = (byMod.get(mod) || []).slice().sort((a, b) => {
+        const ct = String(a.tur).localeCompare(String(b.tur), "es");
+        if (ct) return ct;
+        return String(a.lote).localeCompare(String(b.lote), "es");
       });
+      let m1 = 0;
+      let m2 = 0;
+      let m3 = 0;
+      let m4 = 0;
+      let m5 = 0;
+      let mN = 0;
+      const groupId = String(mod);
+      const loteRows = lotes.map((L) => {
+        const n = Number(L.sampleCount) || Number(L.e2N) || 0;
+        mN += n;
+        m1 += Number(L.e1Sum) || 0;
+        m2 += Number(L.e2Sum) || 0;
+        m3 += Number(L.e3Sum) || 0;
+        m4 += Number(L.e4Sum) || 0;
+        m5 += Number(L.e5Sum) || 0;
+        return `<tr class="lote-row is-collapsed" data-mod-group="${escapeAttr(groupId)}" hidden>
+            <td><span class="lote-tur">T${escapeHtml(L.tur)}</span> ${escapeHtml(L.lote)}</td>
+            ${promCell_(L.e2Avg)}${promCell_(L.e3Avg)}${promCell_(L.e4Avg)}${promCell_(L.e5Avg)}
+            ${totalCell_(L.total)}
+          </tr>`;
+      });
+      const modP1 = promByMuestras_(m1, mN);
+      const modP2 = promByMuestras_(m2, mN);
+      const modP3 = promByMuestras_(m3, mN);
+      const modP4 = promByMuestras_(m4, mN);
+      const modP5 = promByMuestras_(m5, mN);
+      const modTot = sumE1aE5_(modP1, modP2, modP3, modP4, modP5);
+      // Arriba (fila módulo): promedio E2–E5; Total = E1+…+E5
       bodyRows.push(
-        `<tr class="mod-row"><td>${escapeHtml(mod)}</td><td class="hist-kg-total-cell"><strong>${fmtNum_(
-          modTot,
-          2
-        )}</strong> <em>kg</em></td><td class="hist-kg-detail-cell"><span class="hist-kg-muted">—</span></td></tr>${turBlocks.join(
-          ""
-        )}`
+        `<tr class="mod-row is-accordion" data-mod-toggle="${escapeAttr(groupId)}" aria-expanded="false">
+          <td><span class="mod-caret" aria-hidden="true">▸</span> ${escapeHtml(mod)} <em class="mod-count">${
+          lotes.length
+        } lote${lotes.length === 1 ? "" : "s"} · ${mN} mues.</em></td>
+          ${promCell_(modP2)}${promCell_(modP3)}${promCell_(modP4)}${promCell_(modP5)}
+          ${totalCell_(modTot)}
+        </tr>${loteRows.join("")}`
       );
     });
 
     if (sumEl) {
-      sumEl.textContent = `${pendingN} pend. · ${rows.length} lote${
-        rows.length === 1 ? "" : "s"
-      } · ${fmtNum_(grandTotal, 2)} kg · Peso ${fmtNum_(histPeso_(), 2)} g`;
+      sumEl.textContent = `${rows.length} lote${rows.length === 1 ? "" : "s"} · ${gN} muestra${
+        gN === 1 ? "" : "s"
+      } · Total ${fmtNum_(grandTotal, 1)}`;
     }
 
     if (!rows.length) {
       listEl.innerHTML = "";
-      if (emptyEl) emptyEl.hidden = false;
+      if (emptyEl) {
+        emptyEl.hidden = false;
+        emptyEl.textContent = "Sin registros para estos filtros.";
+      }
       return;
     }
     if (emptyEl) emptyEl.hidden = true;
 
     listEl.innerHTML = `<table class="hist-kg-table hist-kg-compact">
-      <thead><tr><th>Campo</th><th>Total</th><th>Detalles</th></tr></thead>
+      <thead><tr><th>Campo</th><th>E2</th><th>E3</th><th>E4</th><th>E5</th><th>Total</th></tr></thead>
       <tbody>
         ${bodyRows.join("")}
-        <tr class="total-row"><td>Total</td><td class="hist-kg-total-cell"><strong>${fmtNum_(
-          grandTotal,
-          2
-        )}</strong> <em>kg</em></td><td class="hist-kg-detail-cell"><span class="hist-kg-muted">—</span></td></tr>
+        <tr class="total-row"><td>Total</td>${promCell_(grandP2)}${promCell_(grandP3)}${promCell_(
+          grandP4
+        )}${promCell_(grandP5)}${totalCell_(grandTotal)}</tr>
       </tbody>
     </table>
-    <p class="hist-kg-foot">1-${rows.length} de ${rows.length} lotes · ${fmtNum_(
-      grandTotal,
-      2
-    )} kg · toca un turno para ver lotes</p>`;
+    <p class="hist-kg-foot">${rows.length} lote${rows.length === 1 ? "" : "s"} · ${gN} muestra${
+      gN === 1 ? "" : "s"
+    } · toca un módulo</p>`;
 
-    listEl.querySelectorAll("[data-tur-toggle]").forEach((tr) => {
+    listEl.querySelectorAll("[data-mod-toggle]").forEach((tr) => {
       tr.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
         if (Date.now() < historialReadyAt_) return;
-        const gid = tr.getAttribute("data-tur-toggle");
+        const gid = tr.getAttribute("data-mod-toggle");
         const open = tr.getAttribute("aria-expanded") === "true";
         const next = !open;
         tr.setAttribute("aria-expanded", next ? "true" : "false");
         tr.classList.toggle("is-open", next);
-        listEl.querySelectorAll("tr.lote-row[data-tur-group]").forEach((row) => {
-          if (row.getAttribute("data-tur-group") !== gid) return;
+        listEl.querySelectorAll("tr.lote-row[data-mod-group]").forEach((row) => {
+          if (row.getAttribute("data-mod-group") !== gid) return;
           row.hidden = !next;
           row.classList.toggle("is-collapsed", !next);
         });
-      });
-    });
-
-    listEl.querySelectorAll("[data-kg-open]").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (Date.now() < historialReadyAt_) return;
-        openKgDetail_(btn.getAttribute("data-kg-open"));
       });
     });
   }
@@ -2556,7 +3522,8 @@ QB.App = (() => {
       closeCreateModal();
     });
     fastTap_($("#btn-create-ok"), confirmCreate);
-    fastTap_($("#sel-campana"), openCampanaSelect);
+    // Campaña: solo lectura (año Lima actual)
+    setCampanaLabel_(defaultCampana_());
     fastTap_($("#fab-options-btn"), (e) => {
       e.stopPropagation();
       const menu = $("#fab-menu");
@@ -2652,7 +3619,16 @@ QB.App = (() => {
     $("#qb-kg-detail")?.addEventListener("click", (e) => {
       if (e.target && e.target.id === "qb-kg-detail") closeKgDetail_();
     });
+    fastTap_($("#last-send-card"), () => openLastSendDetail_());
+    fastTap_($("#qb-last-detail-close"), closeLastSendDetail_);
+    fastTap_($("#qb-last-detail-done"), closeLastSendDetail_);
+    fastTap_($("#qb-last-send-prev"), () => shiftLastSend_(-1));
+    fastTap_($("#qb-last-send-next"), () => shiftLastSend_(1));
+    $("#qb-last-detail")?.addEventListener("click", (e) => {
+      if (e.target && e.target.id === "qb-last-detail") closeLastSendDetail_();
+    });
     fastTap_($("#sel-cartilla"), openCartillaSelect);
+    fastTap_($("#sel-fundo"), openFundoSelect);
     fastTap_($("#sel-modulo"), openModuloSelect);
     fastTap_($("#sel-turno"), openTurnoSelect);
     fastTap_($("#sel-lote"), openLoteSelect);
@@ -2682,6 +3658,12 @@ QB.App = (() => {
       showScreen("home");
       renderHomeList();
     });
+    fastTap_($("#hist-filtro-aplicar"), () => applyHistFilters_());
+    fastTap_($("#hist-filtro-modulo"), openHistModuloFilter_);
+    fastTap_($("#hist-filtro-eval"), openHistEvalFilter_);
+    fastTap_($("#hist-filtro-desde"), () => openHistDatePicker_("desde"));
+    fastTap_($("#hist-filtro-hasta"), () => openHistDatePicker_("hasta"));
+    bindHistDatePicker_();
     fastTap_($("#btn-sync-info"), openSyncModal);
     fastTap_($("#qb-sync-close"), closeSyncModal);
     fastTap_($("#qb-sync-done"), closeSyncModal);
@@ -2731,10 +3713,10 @@ QB.App = (() => {
           ? `${n} subido${n === 1 ? "" : "s"} · ${remain} pendiente${remain === 1 ? "" : "s"}`
           : `${n} registro${n === 1 ? "" : "s"} subido${n === 1 ? "" : "s"} a la nube`;
         toast(msg, "ok");
-        notifyPhone_("Proyecciones · Enviado", msg, "qb-proy-sent");
+        notifyPhone_("Fenología · Enviado", msg, "qb-proy-sent");
       } else if (d.phase === "done" && d.stale && Number(d.sent) > 0) {
         notifyPhone_(
-          "Proyecciones · Parcial",
+          "Fenología · Parcial",
           `${d.sent} enviados · revisa pendientes`,
           "qb-proy-partial"
         );
@@ -2744,7 +3726,7 @@ QB.App = (() => {
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         saveDraft_();
-      } else {
+    } else {
         updateOnlineUi();
         updatePendingUi();
         if (navigator.onLine && QB.API.flushQueue) {
@@ -2798,8 +3780,8 @@ QB.App = (() => {
 
     if (!readSession_()) {
       showLogin_("");
-      return;
-    }
+          return;
+        }
 
     updatePendingUi();
     renderHomeList();

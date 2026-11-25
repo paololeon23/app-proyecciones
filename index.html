@@ -6,10 +6,10 @@
   <meta name="theme-color" content="#1F3D2A" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Proyecciones" />
+  <meta name="apple-mobile-web-app-title" content="Fenología" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="description" content="Q Berries — Cartilla de proyecciones en campo" />
-  <title>Q Berries · Proyecciones</title>
+  <meta name="description" content="Q Berries — Cartilla de fenología en campo" />
+  <title>Q Berries · Fenología</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png" />
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
@@ -59,7 +59,7 @@
       <img class="desktop-gate-logo" src="assets/logo-qberries.png" alt="Q Berries" width="72" height="72" decoding="async" />
       <p class="desktop-gate-brand">Q BERRIES</p>
       <h1>Solo en celular o tablet</h1>
-      <p class="desktop-gate-lead">Proyecciones está hecha para campo. En computadora no se puede usar.</p>
+      <p class="desktop-gate-lead">Fenología está hecha para campo. En computadora no se puede usar.</p>
       <div class="desktop-gate-devices" aria-hidden="true">
         <span class="desktop-gate-device phone">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
@@ -93,6 +93,27 @@
       </div>
       <div class="qb-kg-detail-body" id="qb-kg-detail-body"></div>
       <button type="button" class="qb-kg-detail-done" id="qb-kg-detail-done">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Resumen breve local del último envío -->
+  <div class="qb-last-detail" id="qb-last-detail" hidden>
+    <div class="qb-last-detail-sheet" role="dialog" aria-modal="true" aria-labelledby="qb-last-detail-title">
+      <div class="qb-last-detail-head">
+        <div>
+          <p class="qb-last-detail-kicker">Historial local · 18 h</p>
+          <h2 id="qb-last-detail-title">—</h2>
+          <p class="qb-last-detail-sub" id="qb-last-detail-sub"></p>
+        </div>
+        <button type="button" class="qb-last-detail-close" id="qb-last-detail-close" aria-label="Cerrar">×</button>
+      </div>
+      <div class="qb-last-detail-body" id="qb-last-detail-body"></div>
+      <div class="qb-last-nav" id="qb-last-nav" hidden>
+        <button type="button" class="qb-last-page-btn" id="qb-last-send-prev">Anterior</button>
+        <span class="qb-last-page-info" id="qb-last-send-info">1 / 1</span>
+        <button type="button" class="qb-last-page-btn" id="qb-last-send-next">Siguiente</button>
+      </div>
+      <button type="button" class="qb-last-detail-done" id="qb-last-detail-done">Cerrar</button>
     </div>
   </div>
 
@@ -203,16 +224,20 @@
           <p class="create-kicker">Q BERRIES</p>
           <h2 id="create-modal-title">Nueva cartilla</h2>
         </div>
-        <button type="button" class="create-campana" id="sel-campana" aria-label="Campaña">
+        <div class="create-campana is-static" id="sel-campana" aria-label="Campaña actual">
           <span class="create-campana-kicker">Campaña</span>
-          <strong id="sel-campana-label">2026</strong>
-        </button>
+          <strong id="sel-campana-label">—</strong>
+        </div>
       </div>
       <p class="create-lead">Completa los datos para abrir la cartilla</p>
       <div class="create-fields">
         <label class="create-field">
           <span>Cartilla</span>
           <button type="button" class="create-select" id="sel-cartilla" data-placeholder="Seleccionar">Seleccionar</button>
+        </label>
+        <label class="create-field">
+          <span>Fundo</span>
+          <button type="button" class="create-select" id="sel-fundo" data-placeholder="Seleccionar">Seleccionar</button>
         </label>
         <label class="create-field">
           <span>Módulo</span>
@@ -237,7 +262,7 @@
   <div class="qb-login" id="qb-login" role="dialog" aria-modal="true" aria-labelledby="login-title">
     <form class="qb-login-card" id="qb-login-form" autocomplete="off" data-login-step="1">
       <img class="qb-login-logo" src="assets/logo-qberries.png" alt="Q Berries" width="84" height="84" />
-      <p class="qb-login-brand">Q BERRIES · PROYECCIONES</p>
+      <p class="qb-login-brand">Q BERRIES · FENOLOGÍA</p>
       <h1 id="login-title">Iniciar sesión</h1>
       <p class="qb-login-lead" id="login-lead">Paso 1 de 2 · Ingresa tu DNI</p>
       <div class="qb-login-steps" aria-hidden="true">
@@ -288,7 +313,7 @@
           <img class="corp-logo" src="assets/logo-qberries.png" alt="Q Berries" width="40" height="40" draggable="false" />
           <div class="corp-titles">
             <div class="corp-brand">Q BERRIES</div>
-            <h1 class="corp-title">Proyecciones</h1>
+            <h1 class="corp-title">Fenología</h1>
             <p class="corp-sub" id="home-session">Cartilla de campo</p>
           </div>
         </div>
@@ -310,7 +335,7 @@
       <div class="panel-scroll home-list-wrap" id="home-scroll">
         <div class="install-banner" id="install-banner" hidden>
           <div class="install-banner-copy">
-            <strong id="install-banner-title">Instalar Proyecciones</strong>
+            <strong id="install-banner-title">Instalar Fenología</strong>
             <p id="install-banner-text">Agrégala a tu inicio para usarla como app en campo.</p>
           </div>
           <div class="install-banner-actions">
@@ -319,7 +344,7 @@
           </div>
         </div>
 
-        <section class="proy-guide" aria-label="Qué es Proyecciones">
+        <section class="proy-guide" aria-label="Qué es Fenología">
           <article class="proy-guide-hero">
             <div class="proy-guide-hero-media">
               <img
@@ -332,7 +357,7 @@
                 decoding="async"
               />
               <div class="proy-guide-hero-copy">
-                <p class="proy-guide-kicker">Proyecciones</p>
+                <p class="proy-guide-kicker">Fenología</p>
                 <h3>Qué es y para qué sirve</h3>
                 <p>
                   Captura muestras en campo, súbelas y proyecta producción con data clara,
@@ -430,7 +455,7 @@
                 <strong id="last-send-title">Sin envíos aún</strong>
                 <span class="last-send-badge" id="last-send-badge" hidden>Enviado</span>
               </div>
-              <p class="last-send-type" id="last-send-type">Proyecciones</p>
+              <p class="last-send-type" id="last-send-type">Fenología</p>
               <p class="last-send-meta" id="last-send-text">Cuando guardes una cartilla, verás aquí si quedó pendiente o enviada.</p>
             </div>
           </div>
@@ -469,21 +494,65 @@
         </div>
       </header>
       <div class="panel-scroll historial-wrap">
-        <div class="hist-peso-bar" id="hist-peso-bar">
-          <label class="hist-peso-label">
-            <span>Peso baya (g)</span>
-            <input type="text" inputmode="decimal" id="hist-peso-input" autocomplete="off" aria-label="Peso de baya en gramos" />
-          </label>
-          <p class="hist-peso-hint">Se usa para proyectar kg · editable como en Escaneadas</p>
+        <div class="hist-filters" id="hist-filters">
+          <div class="hist-filters-head">
+            <strong>Filtros</strong>
+            <em>Módulo · Evaluador · Fechas</em>
+          </div>
+          <div class="hist-filters-grid">
+            <div class="hist-filter-field hist-filter-select">
+              <span>Módulo</span>
+              <button type="button" class="hist-select" id="hist-filtro-modulo" data-placeholder="Todos" aria-label="Filtrar por módulo">Todos</button>
+            </div>
+            <div class="hist-filter-field hist-filter-select">
+              <span>Evaluador</span>
+              <button type="button" class="hist-select" id="hist-filtro-eval" data-placeholder="Todos" aria-label="Filtrar por evaluador">Todos</button>
+            </div>
+            <div class="hist-filter-field hist-filter-date">
+              <span>Desde</span>
+              <button type="button" class="hist-date-btn" id="hist-filtro-desde" data-placeholder="Elegir fecha" aria-label="Fecha desde">Elegir fecha</button>
+            </div>
+            <div class="hist-filter-field hist-filter-date">
+              <span>Hasta</span>
+              <button type="button" class="hist-date-btn" id="hist-filtro-hasta" data-placeholder="Elegir fecha" aria-label="Fecha hasta">Elegir fecha</button>
+            </div>
+          </div>
+          <div class="hist-filters-actions">
+            <button type="button" class="hist-filtro-btn" id="hist-filtro-aplicar">Aplicar filtros</button>
+          </div>
+        </div>
+        <!-- Calendario formal Q Berries (reemplaza el date nativo del navegador) -->
+        <div class="overlay hist-date-overlay" id="hist-date-overlay" hidden>
+          <div class="hist-date-sheet" role="dialog" aria-modal="true" aria-labelledby="hist-date-title">
+            <div class="hist-date-sheet-head">
+              <h3 id="hist-date-title">Fecha</h3>
+              <button type="button" class="icon-btn" id="hist-date-close" aria-label="Cerrar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="hist-date-nav">
+              <button type="button" class="hist-date-nav-btn" id="hist-date-prev" aria-label="Mes anterior">‹</button>
+              <strong id="hist-date-month">—</strong>
+              <button type="button" class="hist-date-nav-btn" id="hist-date-next" aria-label="Mes siguiente">›</button>
+            </div>
+            <div class="hist-date-weekdays" aria-hidden="true">
+              <span>Do</span><span>Lu</span><span>Ma</span><span>Mi</span><span>Ju</span><span>Vi</span><span>Sa</span>
+            </div>
+            <div class="hist-date-grid" id="hist-date-grid"></div>
+            <div class="hist-date-actions">
+              <button type="button" class="hist-date-action ghost" id="hist-date-clear">Borrar</button>
+              <button type="button" class="hist-date-action solid" id="hist-date-today">Hoy</button>
+            </div>
+          </div>
         </div>
         <p class="historial-summary" id="historial-summary"></p>
         <div class="hist-kg-panel">
           <div class="hist-kg-head">
-            <strong>Tabla resumen · KG</strong>
+            <strong>Resumen</strong>
           </div>
           <div class="hist-kg-scroll" id="historial-list"></div>
         </div>
-        <p class="historial-empty" id="historial-empty" hidden>Sin registros de envío todavía.</p>
+        <p class="historial-empty" id="historial-empty" hidden>Sin registros todavía.</p>
       </div>
     </section>
 
@@ -495,7 +564,7 @@
         </button>
         <div class="corp-titles grow">
           <div class="corp-brand">Q BERRIES</div>
-          <h1 class="corp-title">Cartilla Proyecciones</h1>
+          <h1 class="corp-title">Cartilla Fenología</h1>
           <p class="corp-sub" id="cartilla-code-sub">—</p>
         </div>
         <div class="status-stack" data-status-bar>
@@ -582,7 +651,7 @@
         if (!reg || !reg.waiting) return;
         if (window.__qbUpdateAsked) return;
         window.__qbUpdateAsked = true;
-        var go = window.confirm("Hay una versión nueva de Proyecciones. ¿Actualizar ahora?");
+        var go = window.confirm("Hay una versión nueva de Fenología. ¿Actualizar ahora?");
         if (go) {
           reg.waiting.postMessage({ type: "SKIP_WAITING" });
         } else {

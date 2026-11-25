@@ -1,18 +1,18 @@
-/** Catálogos y definición de cartilla — Q Berries · Proyecciones */
+/** Catálogos y definición de cartilla — Q Berries · Fenología */
 window.QB = window.QB || {};
 
 QB.CONFIG = {
   /** Endpoint codificado (uso interno). Pegar URL /exec de Apps Script aquí o en _ep base64. */
   _ep: "",
   API_URL: "https://script.google.com/macros/s/AKfycbxxLAKdchGStfg2IIkaeJKgDdsRgTf9-s-jg3cYz6k2dgZcaJj-54CFLgwPled2fr24/exec",
-  APP_NAME: "Q Berries · Proyecciones",
-  VERSION: "1.6.5",
+  APP_NAME: "Q Berries · Fenología",
+  VERSION: "1.8.7",
   PUBLIC_URL: "https://app-proyecciones.netlify.app",
   /** Muestras iniciales al crear cartilla (se pueden agregar más en campo) */
   SAMPLE_START: 1,
   SAMPLE_MAX: 40,
-  /** Campaña activa por defecto en el modal CREAR */
-  CAMPANA_DEFAULT: "2026",
+  /** Campaña: año Lima actual (al terminar el año pasa sola, sin selector) */
+  CAMPANA_DEFAULT: "",
   /** Historial / proyección: peso baya (g) y densidad plantas/ha */
   PESO_BAYA_G: 2.6,
   DENSIDAD_PLANTAS_HA: 6500,
@@ -22,16 +22,22 @@ QB.CONFIG = {
   PHOTO_TARGET_KB: 320,
 };
 
-/** Campañas disponibles (selector arriba a la derecha del modal) */
-QB.CAMPANAS = [
-  { id: "2026", label: "2026" },
-  { id: "2025", label: "2025" },
-];
+/** Ya no se elige campaña a mano · solo año en curso */
+QB.CAMPANAS = [];
+
 
 /** Cartillas disponibles en el modal CREAR */
 QB.CARTILLAS = [
-  { id: "proyecciones", label: "Proyecciones", meta: "Cartilla de campo" },
+  { id: "proyecciones", label: "Fenología", meta: "Cartilla de campo" },
   { id: "biometria", label: "Biometría", meta: "Próximamente · bloqueada", disabled: true },
+];
+
+/** Fundos Licapa I–IV (modal CREAR, debajo de Cartilla) */
+QB.FUNDOS = [
+  { id: "I", label: "Licapa I", meta: "Fundo" },
+  { id: "II", label: "Licapa II", meta: "Fundo" },
+  { id: "III", label: "Licapa III", meta: "Fundo" },
+  { id: "IV", label: "Licapa IV", meta: "Fundo" },
 ];
 
 /** Campos numéricos por muestra (orden de la cartilla) */

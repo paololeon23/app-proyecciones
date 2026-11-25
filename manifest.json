@@ -1,7 +1,7 @@
 {
-  "name": "Q Berries · Proyecciones",
-  "short_name": "Proyecciones",
-  "description": "Cartilla de proyecciones en campo — Q Berries",
+  "name": "Q Berries · Fenología",
+  "short_name": "Fenología",
+  "description": "Cartilla de fenología en campo — Q Berries",
   "start_url": "./index.html?source=pwa",
   "id": "/",
   "scope": "./",

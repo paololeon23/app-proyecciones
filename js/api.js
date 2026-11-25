@@ -804,6 +804,42 @@ QB.API = (() => {
       .map((v) => ({ id: v, label: v, meta: "Local · emergencia", customText: true }));
   }
 
+  /** Muestra completa desde fila de hoja / wire (E3/E4/E5 reales, no recortadas). */
+  function sampleFromSheetRow_(r, i) {
+    r = r || {};
+    const o = {
+      n: r["N° Muestra"] != null ? r["N° Muestra"] : i + 1,
+      observacion: r["Observación"] ?? r.Observacion ?? "",
+      Area: r.Area ?? r.area ?? "",
+      area: r.Area ?? r.area ?? "",
+      Anexo: r.Anexo || "",
+    };
+    const fields = (window.QB && QB.SAMPLE_FIELDS) || [];
+    if (fields.length) {
+      fields.forEach((f) => {
+        o[f.id] = r[f.sheet] != null && r[f.sheet] !== "" ? r[f.sheet] : r[f.id] ?? "";
+      });
+    } else {
+      o.n_ramas = r["N° Ramas"] ?? "";
+      o.yema_productiva = r["Yema Productiva"] ?? "";
+      o.yema_abierta = r["Yema Abierta"] ?? "";
+      o.yemas_cerradas = r["Yemas Cerradas"] ?? "";
+      o.yemas_muertas = r["Yemas Muertas"] ?? "";
+      o.boton_floral = r["Botón Floral"] ?? "";
+      o.flor = r.Flor ?? r.flor ?? "";
+      o.cuaja = r.Cuaja ?? r.cuaja ?? "";
+      o.e1 = r["E1 (Verde)"] ?? "";
+      o.e2 = r["E2 (Rosado)"] ?? "";
+      o.e3 = r["E3 (Guinda)"] ?? "";
+      o.e4 = r["E4 (50%-70%)"] ?? "";
+      o.e5 = r["E5 (Maduro)"] ?? "";
+    }
+    // aliases legados
+    o.yema = o.yema_productiva;
+    o.abierta = o.yema_abierta;
+    return o;
+  }
+
   function activityEntryLight_(record) {
     const data = record.data || {};
     const rows = Array.isArray(record.rows) ? record.rows : [];
@@ -815,27 +851,35 @@ QB.API = (() => {
       Number(data.sampleCount) ||
       rows.length ||
       0;
+    let area = data.area;
+    if ((area == null || area === "") && rows[0]) {
+      area = rows[0].Area != null && rows[0].Area !== "" ? rows[0].Area : rows[0].area;
+    }
+    const dni =
+      String(data.evaluadorId || data.dni || "").replace(/\D/g, "") ||
+      (String(data.evaluador || "").match(/(\d{8})/) || [])[1] ||
+      "";
     return {
       clientId: String(record.clientId || "").trim(),
       type: normEvalType_(record.type) || record.type,
       nota: record.score?.nota,
       calidadGlobal: record.score?.calidadGlobal,
       evaluador: data.evaluador || "",
+      evaluadorId: dni,
+      dni,
       cosechador: data.cosechador || "",
       variedad: data.variedad || "",
       modulo: data.modulo || "",
       lote: data.lote || "",
+      loteCode: data.lote || "",
+      loteNum: data.loteNum || "",
+      area: area != null && area !== "" ? area : "",
       turno: data.turno != null && data.turno !== "" ? String(data.turno) : "",
       sampleCount,
-      samples: rows.map((r, i) => ({
-        n: r["N° Muestra"] != null ? r["N° Muestra"] : i + 1,
-        yema: r["Yema Productiva"] ?? "",
-        abierta: r["Yema Abierta"] ?? "",
-        e1: r["E1 (Verde)"] ?? "",
-        e5: r["E5 (Maduro)"] ?? "",
-      })),
+      samples: rows.map((r, i) => sampleFromSheetRow_(r, i)),
       fecha,
       at: record.submittedAt || new Date().toISOString(),
+      source: "activity",
     };
   }
 
@@ -918,12 +962,18 @@ QB.API = (() => {
       const meta = QB.Data.loteMeta(d.loteNum || lote);
       if (meta && meta.area != null && meta.area !== "") area = meta.area;
     }
+    const dni =
+      String(d.evaluadorId || d.dni || "").replace(/\D/g, "") ||
+      (String(d.evaluador || "").match(/(\d{8})/) || [])[1] ||
+      "";
     return {
       id: item.clientId || at || `pending_${Math.random().toString(36).slice(2, 8)}`,
       clientId: item.clientId || "",
       type,
       at,
       evaluador: d.evaluador || "",
+      evaluadorId: dni,
+      dni,
       cosechador: d.cosechador || "",
       variedad: d.variedad || "",
       lote,
@@ -933,30 +983,120 @@ QB.API = (() => {
       turno,
       area: area != null && area !== "" ? area : "",
       fecha: d.fecha || "",
-      cartillaLabel: d.cartillaLabel || "Proyecciones",
+      cartillaLabel: d.cartillaLabel || "Fenología",
       sampleCount,
-      samples: rows.map((r, i) => {
-        const o = {
-          n: r["N° Muestra"] != null ? r["N° Muestra"] : i + 1,
-          yema: r["Yema Productiva"] ?? "",
-          abierta: r["Yema Abierta"] ?? "",
-          e1: r["E1 (Verde)"] ?? "",
-          e5: r["E5 (Maduro)"] ?? "",
-          boton_floral: r["Botón Floral"] ?? "",
-          flor: r.Flor ?? r.flor ?? "",
-          cuaja: r.Cuaja ?? r.cuaja ?? "",
-          e2: r["E2 (Rosado)"] ?? "",
-          e3: r["E3 (Guinda)"] ?? "",
-          e4: r["E4 (50%-70%)"] ?? "",
-          Area: r.Area ?? r.area ?? "",
-          Anexo: r.Anexo || "",
-        };
-        return o;
-      }),
+      samples: rows.map((r, i) => sampleFromSheetRow_(r, i)),
       nota: s.nota,
       calidadGlobal: s.calidadGlobal || "",
       status: "pending",
+      source: "queue",
     };
+  }
+
+  /**
+   * GET real de la hoja Proyecciones (Apps Script listProyecciones_).
+   * Fuente de verdad para E3/E4/E5/kg en historial.
+   */
+  async function fetchProyeccionesList(opts) {
+    opts = opts || {};
+    const base = apiUrl_();
+    if (!base) return { ok: false, error: "Sin API_URL" };
+    const q = new URLSearchParams();
+    q.set("action", "proyecciones");
+    if (opts.limit != null) q.set("limit", String(opts.limit));
+    if (opts.offset != null) q.set("offset", String(opts.offset));
+    if (opts.desde) q.set("desde", String(opts.desde));
+    if (opts.hasta) q.set("hasta", String(opts.hasta));
+    if (opts.modulo) q.set("modulo", String(opts.modulo));
+    if (opts.turno) q.set("turno", String(opts.turno));
+    if (opts.lote) q.set("lote", String(opts.lote));
+    if (opts.dni) q.set("dni", String(opts.dni));
+    if (opts.campana) q.set("campana", String(opts.campana));
+    if (opts.q) q.set("q", String(opts.q));
+    const sep = base.includes("?") ? "&" : "?";
+    const url = `${base}${sep}${q.toString()}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs || 25000);
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        redirect: "follow",
+        signal: ctrl.signal,
+      });
+      const text = await res.text();
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+      if (!json || json.ok === false) {
+        return { ok: false, error: (json && json.error) || "GET proyecciones falló", status: res.status };
+      }
+      return {
+        ok: true,
+        total: json.total,
+        registros: Array.isArray(json.registros) ? json.registros : [],
+        sheet: json.sheet || "Proyecciones",
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Agrupa filas del GET (1 fila = 1 muestra) en cartillas para el historial KG. */
+  function sheetRegistrosToHistory(registros) {
+    const map = new Map();
+    (registros || []).forEach((row) => {
+      if (!row || typeof row !== "object") return;
+      const fechaRaw = row.Fecha;
+      let fecha = "";
+      if (fechaRaw != null && fechaRaw !== "") {
+        const s = String(fechaRaw);
+        const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+        fecha = m ? m[1] : s.slice(0, 10);
+      }
+      const mod = String(row.Modulo || "").trim() || "—";
+      const tur =
+        row.Turno != null && row.Turno !== "" ? String(row.Turno).trim() : "—";
+      const lote = String(row.Lote || "").trim() || "—";
+      const dni = String(row.DNI || "").replace(/\D/g, "");
+      const key = `${fecha}|${mod}|${tur}|${lote}|${dni}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          clientId: `sheet_${key}`,
+          id: `sheet_${key}`,
+          status: "sent",
+          source: "sheet",
+          fecha,
+          at: fecha ? `${fecha}T23:59:59.000-05:00` : new Date().toISOString(),
+          lote,
+          loteCode: lote,
+          loteNum: row.Lotes != null && row.Lotes !== "" ? String(row.Lotes) : "",
+          modulo: mod,
+          turno: tur,
+          variedad: row.Variedad || "",
+          area: row.Area != null && row.Area !== "" ? row.Area : "",
+          dni,
+          evaluadorId: dni,
+          evaluador: dni
+            ? `${dni} — ${String(row.Nombre || "").trim()}`.trim()
+            : String(row.Nombre || "").trim(),
+          samples: [],
+          sampleCount: 0,
+        });
+      }
+      const g = map.get(key);
+      if ((g.area == null || g.area === "") && row.Area != null && row.Area !== "") {
+        g.area = row.Area;
+      }
+      g.samples.push(sampleFromSheetRow_(row, g.samples.length));
+    });
+    return [...map.values()].map((g) => {
+      g.samples.sort((a, b) => Number(a.n) - Number(b.n));
+      g.sampleCount = g.samples.length;
+      return g;
+    });
   }
 
   /**
@@ -1791,6 +1931,8 @@ QB.API = (() => {
     getActivity,
     logActivity,
     getUploadHistory,
+    fetchProyeccionesList,
+    sheetRegistrosToHistory,
     getTodayOpsStats,
     todayKey,
     localDayKey,

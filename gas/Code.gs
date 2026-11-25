@@ -330,7 +330,7 @@ function savePhotoToDrive_(meta, base64, mime) {
   if (meta.replaceId) {
     try {
       DriveApp.getFileById(String(meta.replaceId)).setTrashed(true);
-    } catch (_) {}
+  } catch (_) {}
   }
   var file = fEval.createFile(blob.setName(fileName));
   try {
