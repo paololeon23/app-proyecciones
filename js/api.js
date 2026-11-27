@@ -14,7 +14,7 @@ QB.API = (() => {
   const HISTORY_TTL_MS = 12 * 60 * 60 * 1000;
   const SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000;
   const LAST_SYNC_KEY = "qb_proy_last_sync_at";
-  const EVAL_TYPES = ["proyecciones"];
+  const EVAL_TYPES = ["fenologia", "proyecciones"];
   const TZ_OPS = "America/Lima";
   const BATCH_SIZE = 3; // 3G/H+: lote chico = confirma más rápido
   // Tope si no hay respuesta. 3G/H+ con fotos necesita más margen.
@@ -984,6 +984,8 @@ QB.API = (() => {
       area: area != null && area !== "" ? area : "",
       fecha: d.fecha || "",
       cartillaLabel: d.cartillaLabel || "Fenología",
+      tipo: d.tipo || d.tipoLabel || "",
+      tipoLabel: d.tipo || d.tipoLabel || "",
       sampleCount,
       samples: rows.map((r, i) => sampleFromSheetRow_(r, i)),
       nota: s.nota,
@@ -1100,7 +1102,14 @@ QB.API = (() => {
         const mEv = String(row.Evaluador || "").match(/(\d{8})/);
         dni = mEv ? mEv[1] : "";
       }
-      const key = `${fecha}|${mod}|${tur}|${loteKey}|${dni}`;
+      const tipoRaw = String(row.Tipo || row.tipo || "").trim();
+      let tipoLabel = "";
+      const tipoLow = tipoRaw.toLowerCase();
+      if (/proyecc/.test(tipoLow)) tipoLabel = "Proyecciones";
+      else if (/fenolog/.test(tipoLow)) tipoLabel = "Fenología";
+      else if (tipoRaw) tipoLabel = tipoRaw;
+      else tipoLabel = "Fenología";
+      const key = `${fecha}|${mod}|${tur}|${loteKey}|${dni}|${tipoLabel}`;
       if (!map.has(key)) {
         map.set(key, {
           clientId: `sheet_${key}`,
@@ -1114,6 +1123,8 @@ QB.API = (() => {
           loteNum: row.Lotes != null && row.Lotes !== "" ? String(row.Lotes) : "",
           modulo: mod,
           turno: tur,
+          tipo: tipoLabel,
+          tipoLabel,
           etapa: String(row.Etapa || row.etapa || "").trim(),
           fundo: String(row.Etapa || row.etapa || "").trim(),
           variedad: row.Variedad || "",

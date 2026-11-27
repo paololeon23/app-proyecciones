@@ -234,7 +234,7 @@
       <div class="create-fields">
         <label class="create-field">
           <span>Cartilla</span>
-          <button type="button" class="create-select" id="sel-cartilla" data-placeholder="Seleccionar">Seleccionar</button>
+          <button type="button" class="create-select" id="sel-cartilla" data-placeholder="Seleccionar cartilla">Seleccionar cartilla</button>
         </label>
         <label class="create-field">
           <span>Fundo</span>
@@ -247,7 +247,7 @@
       </div>
       <div class="create-actions">
         <button type="button" class="btn btn-ghost" id="btn-create-cancel">CANCELAR</button>
-        <button type="button" class="btn btn-primary" id="btn-create-ok">CREAR</button>
+        <button type="button" class="btn btn-primary" id="btn-crear-2" data-crear="2">SIGUIENTE</button>
       </div>
     </div>
   </div>
@@ -461,7 +461,7 @@
       </div>
 
       <div class="form-actions proy-actions proy-home">
-        <button type="button" class="btn btn-primary" id="btn-crear">CREAR</button>
+        <button type="button" class="btn btn-primary" id="btn-crear-1" data-crear="1">CREAR</button>
       </div>
     </section>
 
@@ -494,7 +494,7 @@
         <div class="hist-filters" id="hist-filters">
           <div class="hist-filters-head">
             <strong>Filtros</strong>
-            <em>Módulo · Evaluador · Fechas</em>
+            <em>Módulo · Evaluador · Fechas · Tipo</em>
           </div>
           <div class="hist-filters-grid">
             <div class="hist-filter-field hist-filter-select">
@@ -512,6 +512,24 @@
             <div class="hist-filter-field hist-filter-date">
               <span>Hasta</span>
               <button type="button" class="hist-date-btn" id="hist-filtro-hasta" data-placeholder="Elegir fecha" aria-label="Fecha hasta">Elegir fecha</button>
+            </div>
+            <div class="hist-filter-field hist-filter-tipo hist-filter-span">
+              <span>Tipo de evaluación</span>
+              <div class="hist-tipo-seg" role="group" aria-label="Filtrar por tipo">
+                <button type="button" class="hist-tipo-btn is-active" data-tipo="" id="hist-filtro-tipo-todos" data-fast-tap="1">
+                  <strong>Todos</strong>
+                  <em data-tipo-count="all">0</em>
+                </button>
+                <button type="button" class="hist-tipo-btn" data-tipo="fenologia" id="hist-filtro-tipo-fen" data-fast-tap="1">
+                  <strong>Fenología</strong>
+                  <em data-tipo-count="fenologia">0</em>
+                </button>
+                <button type="button" class="hist-tipo-btn" data-tipo="proyecciones" id="hist-filtro-tipo-proy" data-fast-tap="1">
+                  <strong>Proyecciones</strong>
+                  <em data-tipo-count="proyecciones">0</em>
+                </button>
+              </div>
+              <p class="hist-tipo-legend" id="hist-tipo-legend">Sin registros en el rango</p>
             </div>
           </div>
           <div class="hist-filters-actions">

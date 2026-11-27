@@ -479,6 +479,7 @@ body:has(#qb-login:not([hidden])) .fab-wrap,
 body.create-modal-open .fab-wrap,
 body[data-qb-screen="cartilla"] .fab-wrap,
 body[data-qb-screen="resumen"] .fab-wrap,
+body[data-qb-screen="historial"] .fab-wrap,
 html.is-desktop .fab-wrap {
   display: none !important;
 }
@@ -4242,15 +4243,51 @@ html.precise-open body {
   color: var(--qb-muted);
 }
 .resumen-sample header strong {
-  min-width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(62%, 11.5rem);
+  height: auto;
+  min-height: 28px;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
   background: var(--qb-forest);
   color: #fff;
-  font-size: 0.85rem;
+  font-size: 0.68rem;
   font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.resumen-sample .resumen-meta-row {
+  padding: 0 14px 8px;
+  margin: 0 !important;
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.resumen-sample .resumen-meta-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 4rem;
+}
+.resumen-sample .resumen-meta-row em {
+  font-style: normal;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--qb-muted);
+}
+.resumen-sample .resumen-meta-row b {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--qb-forest);
 }
 .resumen-grid {
   display: grid;
@@ -4921,12 +4958,92 @@ body.create-modal-open > .form-actions {
   gap: 6px;
   min-width: 0;
 }
+.hist-filter-span {
+  grid-column: 1 / -1;
+}
 .hist-filter-field > span:first-child {
   font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--hf-ink);
+}
+/* Segmento formal Tipo · Fenología / Proyecciones */
+.hist-filter-tipo {
+  padding-top: 4px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(31, 61, 42, 0.08);
+}
+.hist-tipo-seg {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #EEF3EF 0%, #E4ECE6 100%);
+  border: 1px solid rgba(31, 61, 42, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.hist-tipo-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--hf-ink);
+  font-family: var(--font);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.hist-tipo-btn strong {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  text-align: center;
+}
+.hist-tipo-btn em {
+  font-style: normal;
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--qb-muted);
+  letter-spacing: 0.01em;
+}
+.hist-tipo-btn:hover,
+.hist-tipo-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.55);
+  outline: none;
+}
+.hist-tipo-btn.is-active {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F7FAF7 100%);
+  border-color: rgba(31, 61, 42, 0.14);
+  box-shadow: 0 2px 8px rgba(31, 61, 42, 0.1);
+  color: var(--hf-ink);
+}
+.hist-tipo-btn.is-active strong {
+  color: var(--hf-accent);
+}
+.hist-tipo-btn.is-active em {
+  color: var(--hf-ink);
+}
+.hist-tipo-btn:active,
+.hist-tipo-btn.is-pressed {
+  transform: scale(0.98);
+}
+.hist-tipo-legend {
+  margin: 2px 0 0;
+  font-size: 0.64rem;
+  font-weight: 650;
+  color: var(--qb-muted);
+  line-height: 1.35;
+  letter-spacing: 0.01em;
 }
 /* Trigger formal (abre PreciseSelect · opciones con CSS de .precise-option) */
 .hist-select {

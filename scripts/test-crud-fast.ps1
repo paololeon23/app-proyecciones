@@ -57,7 +57,7 @@ $rows = @(
     'N° Muestra' = 1; 'N° Ramas' = 2; 'Yemas Cerradas' = 1; 'Yema Abierta' = 1
     'Yemas Muertas' = 0; 'Botón Floral' = 2; 'Flor' = 1; 'Cuaja' = 0
     'E1 (Verde)' = 3; 'E2 (Rosado)' = 1; 'E3 (Guinda)' = 0; 'E4 (50%-70%)' = 0; 'E5 (Maduro)' = 2
-    'Observación' = "CRUD $stamp"; 'Modulo' = 'M1'; 'Turno' = 1; 'Lotes' = 3
+    'Tipo' = 'Fenología'; 'Observación' = "CRUD $stamp"; 'Modulo' = 'M1'; 'Turno' = 1; 'Lotes' = 3
     'Semana' = 48; 'Etapa' = 'Licapa I'; 'Variedad' = 'Sekoya Pop'; 'Area' = 0.5; 'Campaña' = '2026'
   },
   [ordered]@{
@@ -65,7 +65,7 @@ $rows = @(
     'N° Muestra' = 2; 'N° Ramas' = 2; 'Yemas Cerradas' = 0; 'Yema Abierta' = 2
     'Yemas Muertas' = 0; 'Botón Floral' = 1; 'Flor' = 2; 'Cuaja' = 1
     'E1 (Verde)' = 2; 'E2 (Rosado)' = 2; 'E3 (Guinda)' = 1; 'E4 (50%-70%)' = 0; 'E5 (Maduro)' = 1
-    'Observación' = "CRUD $stamp"; 'Modulo' = 'M1'; 'Turno' = 1; 'Lotes' = 3
+    'Tipo' = 'Fenología'; 'Observación' = "CRUD $stamp"; 'Modulo' = 'M1'; 'Turno' = 1; 'Lotes' = 3
     'Semana' = 48; 'Etapa' = 'Licapa I'; 'Variedad' = 'Sekoya Pop'; 'Area' = 0.5; 'Campaña' = '2026'
   }
 )
@@ -76,6 +76,7 @@ $postBody = @{
     fecha = $fecha; evaluadorId = $dni; nombre = $nombre; modulo = 'M1'
     turno = '1'; lote = $lote; loteNum = '3'; etapa = 'Licapa I'
     variedad = 'Sekoya Pop'; area = 0.5; campana = '2026'; sampleCount = 2
+    tipo = 'Fenología'; tipoLabel = 'Fenología'
   }
   rows = $rows
   submittedAt = (Get-Date).ToUniversalTime().ToString('o')

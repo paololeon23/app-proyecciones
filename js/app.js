@@ -14,6 +14,10 @@ QB.App = (() => {
     create: {
       evaluadorId: "",
       evaluadorNombre: "",
+      cartillaId: "",
+      cartillaLabel: "",
+      tipoId: "",
+      tipoLabel: "",
       campana: "",
       fundoId: "",
       fundoLabel: "",
@@ -324,6 +328,8 @@ QB.App = (() => {
       evaluadorNombre: "",
       cartillaId: "proyecciones",
       cartillaLabel: "Fenología",
+      tipoId: "",
+      tipoLabel: "",
       fundoId: "",
       modulo: "",
       turno: "",
@@ -591,6 +597,7 @@ QB.App = (() => {
     let bar =
       document.querySelector("body > .form-actions.proy-home") ||
       $("#screen-home .form-actions.proy-home") ||
+      $("#btn-crear-1")?.closest(".form-actions") ||
       $("#btn-crear")?.closest(".form-actions");
     if (bar && bar.parentElement !== document.body) {
       document.body.appendChild(bar);
@@ -629,6 +636,13 @@ QB.App = (() => {
     if (id !== "cartilla") resetKeyboardBar_();
     if (id === "home") {
       ensureHomeCreateBar_();
+    }
+    // Historial: cerrar menú FAB (el botón no se muestra ahí)
+    if (id === "historial") {
+      const menu = $("#fab-menu");
+      const fabBtn = $("#fab-options-btn");
+      if (menu) menu.hidden = true;
+      if (fabBtn) fabBtn.setAttribute("aria-expanded", "false");
     }
     // Asegura que las barras visibles reciban toques
     const unlocked = !!readSession_();
@@ -1051,61 +1065,52 @@ QB.App = (() => {
     return hit ? hit.label : "";
   }
 
+  /** Siempre limpia create-modal-sheet (tras guardar / abandonar / reabrir). */
   function resetCreateForm_() {
-    const prefs = readPrefs_();
-    const defaultCartilla = (QB.CARTILLAS && QB.CARTILLAS[0]) || {
-      id: "proyecciones",
-      label: "Fenología",
-    };
     const session = readSession_();
     const campana = defaultCampana_();
-    const fundoId = String((prefs && prefs.fundoId) || "").trim();
-    const fundoLabel =
-      String((prefs && prefs.fundoLabel) || "").trim() || fundoLabelFromId_(fundoId);
-    // Tras guardar, módulo/turno/lote quedan vacíos para elegir de nuevo
-    state.create = {
-      evaluadorId: (session && session.dni) || "",
-      evaluadorNombre: (session && session.nombre) || "",
-      cartillaId: defaultCartilla.id,
-      cartillaLabel: defaultCartilla.label,
-      campana,
-      fundoId,
-      fundoLabel,
-      modulo: "",
-      turno: "",
-      loteId: "",
-      loteMeta: null,
-    };
-    setSelectLabel($("#sel-cartilla"), defaultCartilla.label || "");
-    setCampanaLabel_(campana);
-    setSelectLabel($("#sel-fundo"), fundoLabel || "");
-    setSelectLabel($("#sel-modulo"), "");
-  }
-
-  function clearSelectsAfterSave_() {
+    // No reusar cartilla/fundo/módulo/tipo: evita bugs al crear de nuevo
     writePrefs_({
       modulo: "",
       turno: "",
       fundoId: "",
       fundoLabel: "",
-      cartillaId: "proyecciones",
-      cartillaLabel: "Fenología",
+      tipoId: "",
+      tipoLabel: "",
+      cartillaId: "",
+      cartillaLabel: "",
     });
-    state.create.modulo = "";
-    state.create.turno = "";
-    state.create.loteId = "";
-    state.create.loteMeta = null;
-    state.create.fundoId = "";
-    state.create.fundoLabel = "";
-    state.create.cartillaId = "proyecciones";
-    state.create.cartillaLabel = "Fenología";
-    setSelectLabel($("#sel-cartilla"), "Fenología");
+    state.create = {
+      evaluadorId: (session && session.dni) || "",
+      evaluadorNombre: (session && session.nombre) || "",
+      cartillaId: "",
+      cartillaLabel: "",
+      tipoId: "",
+      tipoLabel: "",
+      campana,
+      fundoId: "",
+      fundoLabel: "",
+      modulo: "",
+      turno: "",
+      loteId: "",
+      loteMeta: null,
+    };
+    setSelectLabel($("#sel-cartilla"), "");
+    setCampanaLabel_(campana);
     setSelectLabel($("#sel-fundo"), "");
     setSelectLabel($("#sel-modulo"), "");
   }
 
+  function clearSelectsAfterSave_() {
+    resetCreateForm_();
+  }
+
+  /** CREAR-1 (home): solo abre create-modal-sheet limpio. */
   async function openCreateModal() {
     if (!requireSession_()) return;
+    try {
+      if (QB.PreciseSelect && QB.PreciseSelect.close) QB.PreciseSelect.close();
+    } catch (_) {}
     const draft = loadDraft_();
     if (draft && draft.cartilla) {
       const cont = await feedback({
@@ -1119,10 +1124,13 @@ QB.App = (() => {
         openCartilla(draft.cartilla, draft.muestraIndex || 0);
         return;
       }
+      // Abandonar: limpia todo y abre sheet fresco
+      cartillaSelectGuardUntil_ = Date.now() + 900;
       clearDraft_();
       if (state.cartilla) state.cartilla = null;
       renderHomeList();
     }
+    // Siempre limpiar antes de mostrar (guardar / abandonar / CREAR de nuevo)
     resetCreateForm_();
     const modal = $("#create-modal");
     if (!modal) return;
@@ -1132,27 +1140,96 @@ QB.App = (() => {
     document.body.classList.add("create-modal-open");
   }
 
+  /**
+   * SIGUIENTE (btn-crear-2): abre ¿Fenología o Proyecciones? (columna Tipo).
+   * CREAR-1 solo abre el sheet; no debe disparar este select (anti ghost-tap).
+   */
+  function onCreateOkPress_() {
+    if (!document.body.classList.contains("create-modal-open")) return;
+    // El mismo toque de CREAR-1 no debe activar SIGUIENTE
+    if (Date.now() - createOpenedAt_ < 550) return;
+    cartillaSelectGuardUntil_ = 0;
+    if (!state.create.tipoId || !state.create.tipoLabel) {
+      openTipoEvalSelect_();
+      return;
+    }
+    confirmCreate();
+  }
+
+  function tipoEvalOptions_(query) {
+    const q = String(query || "").trim().toLowerCase();
+    const list = (QB.TIPOS_EVAL || []).map((t) => ({
+      id: t.id,
+      label: t.label,
+      meta: t.meta || "Tipo",
+    }));
+    if (!q) return list;
+    return list.filter(
+      (o) => o.label.toLowerCase().includes(q) || o.id.toLowerCase().includes(q)
+    );
+  }
+
+  function openTipoEvalSelect_() {
+    if (Date.now() < cartillaSelectGuardUntil_) return;
+    if (!document.body.classList.contains("create-modal-open")) return;
+    // Nunca por el toque que abrió el modal (CREAR-1)
+    if (Date.now() - createOpenedAt_ < 550) return;
+    QB.PreciseSelect.open({
+      title: "¿Qué vas a evaluar?",
+      hideSearch: true,
+      value: state.create.tipoId || "",
+      getOptions: (q) => tipoEvalOptions_(q),
+      onSelect: (opt) => {
+        if (!opt) return;
+        state.create.tipoId = opt.id;
+        state.create.tipoLabel = opt.label;
+        writePrefs_({ tipoId: opt.id, tipoLabel: opt.label });
+        if (state.create.fundoId && state.create.modulo && state.create.cartillaId) {
+          confirmCreate();
+          return;
+        }
+        if (!state.create.fundoId) {
+          toast("Ahora elige el fundo", "ok");
+          setTimeout(() => openFundoSelect(), 180);
+          return;
+        }
+        if (!state.create.modulo) {
+          toast("Ahora elige el módulo", "ok");
+          setTimeout(() => openModuloSelect(), 180);
+        }
+      },
+    });
+  }
+
   let createOpenedAt_ = 0;
+  let cartillaSelectGuardUntil_ = 0;
 
   function closeCreateModal(opts) {
     const modal = $("#create-modal");
     if (!modal) return;
-    // Evita que el mismo toque de CREAR cierre el modal al instante
+    // Evita que el mismo toque de CREAR-1 cierre el modal al instante
     if (!(opts && opts.force) && Date.now() - createOpenedAt_ < 450) return;
+    try {
+      if (QB.PreciseSelect && QB.PreciseSelect.close) QB.PreciseSelect.close();
+    } catch (_) {}
     modal.classList.remove("open");
     document.body.classList.remove("create-modal-open");
+    // Al cerrar (cancelar / crear / abandonar): deja limpio para la próxima
+    resetCreateForm_();
     setTimeout(() => {
       modal.hidden = true;
-      // Tras cerrar modal: si estamos en home, CREAR debe verse
       if (state.screen === "home") ensureHomeCreateBar_();
     }, 180);
   }
 
   function openCartillaSelect() {
+    if (Date.now() < cartillaSelectGuardUntil_) return;
+    if (!document.body.classList.contains("create-modal-open")) return;
+    if (Date.now() - createOpenedAt_ < 550) return;
     QB.PreciseSelect.open({
       title: "Cartilla",
       hideSearch: true,
-      value: state.create.cartillaId,
+      value: state.create.cartillaId || "",
       getOptions: (q) => cartillaOptions_(q),
       onSelect: (opt) => {
         if (!opt || opt.disabled) {
@@ -1246,13 +1323,19 @@ QB.App = (() => {
     }
     c.evaluadorId = session.dni;
     c.evaluadorNombre = session.nombre || c.evaluadorNombre || "";
-    if (!c.cartillaId) {
+    if (!c.cartillaId || !c.cartillaLabel) {
       toast("Selecciona cartilla", "warn");
+      openCartillaSelect();
+      return;
+    }
+    if (!c.tipoId || !c.tipoLabel) {
+      toast("Elige qué vas a evaluar: Fenología o Proyecciones", "warn");
+      openTipoEvalSelect_();
       return;
     }
     const cartillaDef = (QB.CARTILLAS || []).find((x) => x.id === c.cartillaId);
     if (cartillaDef && cartillaDef.disabled) {
-      toast("Esa cartilla aún no está disponible", "warn");
+      toast("Biometría aún no está disponible", "warn");
       return;
     }
     if (!c.fundoId) {
@@ -1269,6 +1352,8 @@ QB.App = (() => {
       evaluadorNombre: c.evaluadorNombre,
       cartillaId: c.cartillaId,
       cartillaLabel: c.cartillaLabel,
+      tipoId: c.tipoId,
+      tipoLabel: c.tipoLabel,
       fundoId: c.fundoId,
       fundoLabel: c.fundoLabel,
       campana,
@@ -1283,6 +1368,8 @@ QB.App = (() => {
       evaluadorNombre: c.evaluadorNombre,
       cartillaId: c.cartillaId,
       cartillaLabel: c.cartillaLabel || "Fenología",
+      tipoId: c.tipoId,
+      tipoLabel: c.tipoLabel,
       campana,
       fundoId: String(c.fundoId || ""),
       modulo: QB.Data.normalizeModulo(c.modulo),
@@ -2157,6 +2244,7 @@ QB.App = (() => {
         Turno: loc.turno || cartilla.turno || "",
         Lotes: loc.loteNum || cartilla.loteNum || "",
         Semana: semana,
+        Tipo: cartilla.tipoLabel || cartilla.cartillaLabel || "Fenología",
         Etapa: loc.etapa || cartilla.etapa || "",
         Variedad: loc.variedad || cartilla.variedad || "",
         Area: loc.area !== "" && loc.area != null ? loc.area : cartilla.area || "",
@@ -2243,8 +2331,9 @@ QB.App = (() => {
       const samplesForSave = packed.samples;
       const nombre = String(c.evaluadorNombre || "").trim();
       const dni = String(c.evaluadorId || "").replace(/\D/g, "");
+      const tipoEval = c.tipoLabel || "Fenología";
       const payload = {
-        type: "proyecciones",
+        type: c.cartillaId || "proyecciones",
         sheet: "Proyecciones",
         clientId,
         data: {
@@ -2252,6 +2341,10 @@ QB.App = (() => {
           evaluador: dni && nombre ? `${dni} — ${nombre}` : nombre,
           evaluadorId: dni,
           nombre,
+          tipo: tipoEval,
+          cartillaLabel: c.cartillaLabel || "Fenología",
+          cartillaId: c.cartillaId || "",
+          tipoId: c.tipoId || "",
           modulo: c.modulo,
           turno: c.turno,
           lote: c.loteCode,
@@ -2281,6 +2374,8 @@ QB.App = (() => {
         etapa: c.etapa || "",
         campana: normalizeCampana_(c.campana || defaultCampana_()),
         cartillaLabel: c.cartillaLabel || "Fenología",
+        tipo: tipoEval,
+        tipoLabel: tipoEval,
         evaluador: payload.data.evaluador,
         evaluadorId: dni,
         sampleCount: rows.length,
@@ -3282,12 +3377,13 @@ QB.App = (() => {
     dni: "",
     desde: "",
     hasta: "",
+    tipo: "", // "" | fenologia | proyecciones
   };
   /** Si el usuario eligió "Todos" en evaluador, no volver a forzar su DNI */
   let histEvalUserCleared_ = false;
 
   function readHistFiltersFromUi_() {
-    // módulo / evaluador / fechas viven en histFilters_ (botones formales)
+    // módulo / evaluador / fechas / tipo viven en histFilters_ (botones formales)
     return { ...histFilters_ };
   }
 
@@ -3296,6 +3392,42 @@ QB.App = (() => {
     const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return "";
     return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+
+  /** Normaliza Tipo de cartilla (columna Sheet «Tipo»). No usa cartillaId. */
+  function histEntryTipoId_(h) {
+    const raw = String(
+      (h && (h.tipoLabel || h.tipo || h.Tipo)) || ""
+    )
+      .trim()
+      .toLowerCase();
+    if (/proyecc/.test(raw)) return "proyecciones";
+    if (/fenolog/.test(raw)) return "fenologia";
+    return "fenologia";
+  }
+
+  function syncHistTipoUi_(counts) {
+    const c = counts || { all: 0, fenologia: 0, proyecciones: 0 };
+    document.querySelectorAll("[data-tipo-count]").forEach((el) => {
+      const k = el.getAttribute("data-tipo-count");
+      const n = Number(c[k] || 0) || 0;
+      el.textContent = String(n);
+    });
+    document.querySelectorAll(".hist-tipo-btn[data-tipo]").forEach((btn) => {
+      const id = btn.getAttribute("data-tipo") || "";
+      btn.classList.toggle("is-active", id === String(histFilters_.tipo || ""));
+    });
+    const legend = $("#hist-tipo-legend");
+    if (legend) {
+      const fen = Number(c.fenologia || 0) || 0;
+      const proy = Number(c.proyecciones || 0) || 0;
+      const tot = Number(c.all || fen + proy) || 0;
+      if (!tot) {
+        legend.textContent = "Sin registros en el rango seleccionado";
+      } else {
+        legend.textContent = `${fen} Fenología · ${proy} Proyecciones · ${tot} en total`;
+      }
+    }
   }
 
   function syncHistFilterLabels_() {
@@ -3319,6 +3451,10 @@ QB.App = (() => {
     }
     setSelectLabel(desdeBtn, fmtFechaUi_(histFilters_.desde), !histFilters_.desde);
     setSelectLabel(hastaBtn, fmtFechaUi_(histFilters_.hasta), !histFilters_.hasta);
+    document.querySelectorAll(".hist-tipo-btn[data-tipo]").forEach((btn) => {
+      const id = btn.getAttribute("data-tipo") || "";
+      btn.classList.toggle("is-active", id === String(histFilters_.tipo || ""));
+    });
   }
 
   /* ——— Calendario formal (reemplaza input type=date nativo) ——— */
@@ -3546,12 +3682,15 @@ QB.App = (() => {
     }
   }
 
-  function filterHistorialByFilters_(list) {
+  function filterHistorialByFilters_(list, opts) {
+    opts = opts || {};
+    const skipTipo = !!opts.skipTipo;
     const f = histFilters_;
     const mod = String(f.modulo || "").trim().toUpperCase();
     const dni = String(f.dni || "").replace(/\D/g, "");
     const desde = String(f.desde || "").slice(0, 10);
     const hasta = String(f.hasta || "").slice(0, 10);
+    const tipo = String(f.tipo || "").trim().toLowerCase();
     return (list || []).filter((h) => {
       const day = histEntryDay_(h);
       if (desde && day && day < desde) return false;
@@ -3566,8 +3705,22 @@ QB.App = (() => {
       if (dni) {
         if (histEntryDni_(h) !== dni) return false;
       }
+      if (!skipTipo && tipo) {
+        if (histEntryTipoId_(h) !== tipo) return false;
+      }
       return true;
     });
+  }
+
+  function countHistorialByTipo_(list) {
+    const out = { all: 0, fenologia: 0, proyecciones: 0 };
+    (list || []).forEach((h) => {
+      out.all += 1;
+      const id = histEntryTipoId_(h);
+      if (id === "proyecciones") out.proyecciones += 1;
+      else out.fenologia += 1;
+    });
+    return out;
   }
 
   function populateHistFilterOptions_() {
@@ -3614,7 +3767,8 @@ QB.App = (() => {
       const mapped = QB.API.sheetRegistrosToHistory
         ? QB.API.sheetRegistrosToHistory(data.registros || [])
         : [];
-      remoteHistCache_ = filterHistorialByFilters_(mapped);
+      // Sin filtro Tipo: el segmento Fenología/Proyecciones se aplica en UI
+      remoteHistCache_ = filterHistorialByFilters_(mapped, { skipTipo: true });
       remoteHistFetchAt_ = Date.now();
       return true;
     } catch (_) {
@@ -3794,8 +3948,8 @@ QB.App = (() => {
         }
       });
     }
-    // Filtros activos: módulo · evaluador · desde/hasta
-    return filterHistorialByFilters_(history);
+    // Filtros activos: módulo · evaluador · desde/hasta (Tipo se aplica en render)
+    return filterHistorialByFilters_(history, { skipTipo: true });
   }
 
   function histLoteNum_(h, enriched) {
@@ -4002,7 +4156,9 @@ QB.App = (() => {
     }
 
     readHistFiltersFromUi_();
-    const history = collectHistorialRaw_();
+    const beforeTipo = collectHistorialRaw_();
+    syncHistTipoUi_(countHistorialByTipo_(beforeTipo));
+    const history = filterHistorialByFilters_(beforeTipo);
     const rows = buildKgRows_(history);
     histKgById_ = {};
     rows.forEach((r) => {
@@ -4230,9 +4386,15 @@ QB.App = (() => {
     });
 
     if (sumEl) {
-      sumEl.textContent = `${rows.length} lote${rows.length === 1 ? "" : "s"} · ${gN} muestra${
-        gN === 1 ? "" : "s"
-      } · Total ${fmtNum_(grandTotal, 1)}`;
+      const tipoTxt =
+        histFilters_.tipo === "proyecciones"
+          ? "Proyecciones"
+          : histFilters_.tipo === "fenologia"
+            ? "Fenología"
+            : "";
+      sumEl.textContent = `${tipoTxt ? tipoTxt + " · " : ""}${rows.length} lote${
+        rows.length === 1 ? "" : "s"
+      } · ${gN} muestra${gN === 1 ? "" : "s"} · Total ${fmtNum_(grandTotal, 1)}`;
     }
 
     if (!rows.length) {
@@ -4421,13 +4583,16 @@ QB.App = (() => {
   /* ——— Bind ——— */
   function bind() {
     bindCameraSheet_();
-    fastTap_($("#btn-crear"), openCreateModal);
+    // CREAR-1 = home (abre sheet). CREAR-2 = modal (abre select / confirma).
+    const btnCrear1 = $("#btn-crear-1") || $("#btn-crear");
+    const btnCrear2 = $("#btn-crear-2") || $("#btn-create-ok");
+    fastTap_(btnCrear1, openCreateModal);
     fastTap_($("#btn-create-cancel"), closeCreateModal);
     $("#create-modal-backdrop")?.addEventListener("click", (e) => {
       if (Date.now() - createOpenedAt_ < 450) return;
       closeCreateModal();
     });
-    fastTap_($("#btn-create-ok"), confirmCreate);
+    fastTap_(btnCrear2, onCreateOkPress_);
     // Campaña: solo lectura (año Lima actual)
     setCampanaLabel_(defaultCampana_());
     fastTap_($("#fab-options-btn"), (e) => {
@@ -4569,6 +4734,13 @@ QB.App = (() => {
     fastTap_($("#hist-filtro-eval"), openHistEvalFilter_);
     fastTap_($("#hist-filtro-desde"), () => openHistDatePicker_("desde"));
     fastTap_($("#hist-filtro-hasta"), () => openHistDatePicker_("hasta"));
+    document.querySelectorAll(".hist-tipo-btn[data-tipo]").forEach((btn) => {
+      fastTap_(btn, () => {
+        histFilters_.tipo = String(btn.getAttribute("data-tipo") || "");
+        syncHistFilterLabels_();
+        if (state.screen === "historial") renderHistorial();
+      });
+    });
     bindHistDatePicker_();
     fastTap_($("#btn-sync-info"), openSyncModal);
     fastTap_($("#qb-sync-close"), closeSyncModal);

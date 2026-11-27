@@ -6,7 +6,7 @@ QB.CONFIG = {
   _ep: "",
   API_URL: "https://script.google.com/macros/s/AKfycbxxLAKdchGStfg2IIkaeJKgDdsRgTf9-s-jg3cYz6k2dgZcaJj-54CFLgwPled2fr24/exec",
   APP_NAME: "Q Berries · Fenología",
-  VERSION: "1.8.34",
+  VERSION: "1.8.47",
   PUBLIC_URL: "https://app-proyecciones.netlify.app",
   /** Muestras iniciales al crear cartilla (se pueden agregar más en campo) */
   SAMPLE_START: 1,
@@ -26,10 +26,16 @@ QB.CONFIG = {
 QB.CAMPANAS = [];
 
 
-/** Cartillas disponibles en el modal CREAR */
+/** Cartillas del modal CREAR (como antes) */
 QB.CARTILLAS = [
   { id: "proyecciones", label: "Fenología", meta: "Cartilla de campo" },
   { id: "biometria", label: "Biometría", meta: "Próximamente · bloqueada", disabled: true },
+];
+
+/** SIGUIENTE: Fenología o Proyecciones → columna Sheet «Tipo» */
+QB.TIPOS_EVAL = [
+  { id: "fenologia", label: "Fenología", meta: "Evaluación fenológica" },
+  { id: "proyecciones", label: "Proyecciones", meta: "Evaluación de proyecciones" },
 ];
 
 /** Fundos Licapa I–IV (modal CREAR, debajo de Cartilla) */
@@ -87,6 +93,7 @@ QB.SHEET_HEADERS = [
   "E4 (50%-70%)",
   "E5 (Maduro)",
   "Observación",
+  "Tipo",
   "Modulo",
   "Turno",
   "Lotes",
