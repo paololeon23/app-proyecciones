@@ -230,19 +230,19 @@
           <strong id="sel-campana-label">—</strong>
         </div>
       </div>
-      <p class="create-lead">Cartilla, fundo y módulo. Turno y lote se eligen al iniciar la cartilla.</p>
+      <p class="create-lead">Orden: 1) Cartilla → 2) Fundo → 3) Módulo. Turno y lote se eligen al iniciar.</p>
       <div class="create-fields">
-        <label class="create-field">
-          <span>Cartilla</span>
+        <label class="create-field" data-step="1" style="order:1">
+          <span>1 · Cartilla</span>
           <button type="button" class="create-select" id="sel-cartilla" data-placeholder="Seleccionar cartilla">Seleccionar cartilla</button>
         </label>
-        <label class="create-field">
-          <span>Fundo</span>
-          <button type="button" class="create-select" id="sel-fundo" data-placeholder="Seleccionar">Seleccionar</button>
+        <label class="create-field" data-step="2" style="order:2">
+          <span>2 · Fundo</span>
+          <button type="button" class="create-select" id="sel-fundo" data-placeholder="Seleccionar fundo">Seleccionar fundo</button>
         </label>
-        <label class="create-field">
-          <span>Módulo</span>
-          <button type="button" class="create-select" id="sel-modulo" data-placeholder="Seleccionar">Seleccionar</button>
+        <label class="create-field" data-step="3" style="order:3">
+          <span>3 · Módulo</span>
+          <button type="button" class="create-select" id="sel-modulo" data-placeholder="Seleccionar módulo">Seleccionar módulo</button>
         </label>
       </div>
       <div class="create-actions">
@@ -516,15 +516,15 @@
             <div class="hist-filter-field hist-filter-tipo hist-filter-span">
               <span>Tipo de evaluación</span>
               <div class="hist-tipo-seg" role="group" aria-label="Filtrar por tipo">
-                <button type="button" class="hist-tipo-btn is-active" data-tipo="" id="hist-filtro-tipo-todos" data-fast-tap="1">
+                <button type="button" class="hist-tipo-btn is-active" data-tipo="" id="hist-filtro-tipo-todos">
                   <strong>Todos</strong>
                   <em data-tipo-count="all">0</em>
                 </button>
-                <button type="button" class="hist-tipo-btn" data-tipo="fenologia" id="hist-filtro-tipo-fen" data-fast-tap="1">
+                <button type="button" class="hist-tipo-btn" data-tipo="fenologia" id="hist-filtro-tipo-fen">
                   <strong>Fenología</strong>
                   <em data-tipo-count="fenologia">0</em>
                 </button>
-                <button type="button" class="hist-tipo-btn" data-tipo="proyecciones" id="hist-filtro-tipo-proy" data-fast-tap="1">
+                <button type="button" class="hist-tipo-btn" data-tipo="proyecciones" id="hist-filtro-tipo-proy">
                   <strong>Proyecciones</strong>
                   <em data-tipo-count="proyecciones">0</em>
                 </button>

@@ -3056,7 +3056,7 @@ html.precise-open body {
 .qb-fb {
   position: fixed;
   inset: 0;
-  z-index: 12300;
+  z-index: 13000;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -3130,6 +3130,10 @@ html.precise-open body {
   gap: 8px;
   margin-top: 6px;
 }
+.qb-fb-actions.is-armed-wait {
+  pointer-events: none;
+  opacity: 0.72;
+}
 .qb-fb-actions button {
   flex: 1;
   min-height: 46px;
@@ -3137,6 +3141,7 @@ html.precise-open body {
   font-weight: 800;
   font-size: 0.92rem;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .qb-fb-actions .qb-fb-primary {
   background: var(--qb-forest);
@@ -4264,7 +4269,7 @@ html.precise-open body {
   text-overflow: ellipsis;
 }
 .resumen-sample .resumen-meta-row {
-  padding: 0 14px 8px;
+  padding: 8px 14px 8px;
   margin: 0 !important;
   display: flex;
   gap: 18px;
@@ -4487,6 +4492,9 @@ body.create-modal-open > .form-actions {
   flex-direction: column;
   gap: 6px;
 }
+.create-field[data-step="1"] { order: 1; }
+.create-field[data-step="2"] { order: 2; }
+.create-field[data-step="3"] { order: 3; }
 .create-field > span {
   font-size: 0.72rem;
   font-weight: 800;
@@ -6030,10 +6038,16 @@ body.create-modal-open > .form-actions {
   gap: 10px;
 }
 .historial-empty {
+  margin: 12px 0 8px;
+  padding: 28px 18px;
   text-align: center;
-  color: var(--qb-muted);
-  font-weight: 650;
-  padding: 40px 16px;
+  color: var(--qb-forest);
+  font-size: 0.92rem;
+  font-weight: 750;
+  line-height: 1.4;
+  border-radius: 14px;
+  border: 1px dashed rgba(31, 61, 42, 0.18);
+  background: linear-gradient(180deg, #F7FAF7 0%, #EEF3EF 100%);
 }
 .historial-empty[hidden] { display: none !important; }
 .hist-meta-line {

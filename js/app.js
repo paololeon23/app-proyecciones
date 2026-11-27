@@ -511,6 +511,8 @@ QB.App = (() => {
     } catch (_) {}
   }
 
+  let fbReadyAt_ = 0;
+
   function closeFeedback(result) {
     const root = $("#qb-fb");
     if (!root) return;
@@ -525,7 +527,15 @@ QB.App = (() => {
     }
   }
 
-  function feedback({ title, text = "", type = "ok", confirmText = "Listo", cancelText = null, autoClose = 0 }) {
+  function feedback({
+    title,
+    text = "",
+    type = "ok",
+    confirmText = "Listo",
+    cancelText = null,
+    autoClose = 0,
+    armMs = 320,
+  }) {
     return new Promise((resolve) => {
       const root = $("#qb-fb");
       const icon = $("#qb-fb-icon");
@@ -537,7 +547,8 @@ QB.App = (() => {
         resolve(true);
         return;
       }
-      if (fbResolve) fbResolve(false);
+      // Si había otro diálogo: dismiss (null), NO abandonar
+      if (fbResolve) fbResolve(null);
       fbResolve = resolve;
       clearTimeout(fbTimer);
       clearTimeout(fbHideTimer);
@@ -548,26 +559,68 @@ QB.App = (() => {
       textEl.textContent = text;
       textEl.hidden = !text;
 
+      // Anti ghost-tap (configurable): Salir usa arm corto; CREAR+borrador usa largo
+      const wait = Math.max(0, Number(armMs) || 0);
+      fbReadyAt_ = Date.now() + wait;
+      const safeClose_ = (val) => {
+        if (Date.now() < fbReadyAt_) return;
+        closeFeedback(val);
+      };
+
       actions.innerHTML = "";
+      if (wait > 0) actions.classList.add("is-armed-wait");
       if (cancelText) {
         const cancelBtn = document.createElement("button");
         cancelBtn.type = "button";
         cancelBtn.className = "qb-fb-secondary";
         cancelBtn.textContent = cancelText;
-        cancelBtn.addEventListener("click", () => closeFeedback(false));
+        cancelBtn.addEventListener(
+          "pointerup",
+          (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            safeClose_(false);
+          },
+          { passive: false }
+        );
+        cancelBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          safeClose_(false);
+        });
         actions.appendChild(cancelBtn);
       }
       const okBtn = document.createElement("button");
       okBtn.type = "button";
       okBtn.className = "qb-fb-primary";
       okBtn.textContent = confirmText;
-      okBtn.addEventListener("click", () => closeFeedback(true));
+      okBtn.addEventListener(
+        "pointerup",
+        (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          safeClose_(true);
+        },
+        { passive: false }
+      );
+      okBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        safeClose_(true);
+      });
       actions.appendChild(okBtn);
 
       root.hidden = false;
       requestAnimationFrame(() => root.classList.add("open"));
+      if (wait > 0) {
+        setTimeout(() => {
+          try {
+            actions.classList.remove("is-armed-wait");
+          } catch (_) {}
+        }, wait + 20);
+      }
       if (autoClose > 0) {
-        fbTimer = setTimeout(() => closeFeedback(true), autoClose);
+        fbTimer = setTimeout(() => closeFeedback(true), Math.max(autoClose, wait + 50));
       }
     });
   }
@@ -615,6 +668,9 @@ QB.App = (() => {
       btn.style.removeProperty("visibility");
       btn.style.removeProperty("display");
     });
+    // Reafirma handler: CREAR siempre valida borrador en curso
+    const crearBtn = bar.querySelector("#btn-crear-1, #btn-crear");
+    if (crearBtn) fastTap_(crearBtn, openCreateModal);
     return bar;
   }
 
@@ -1105,43 +1161,98 @@ QB.App = (() => {
     resetCreateForm_();
   }
 
-  /** CREAR-1 (home): solo abre create-modal-sheet limpio. */
-  async function openCreateModal() {
-    if (!requireSession_()) return;
-    try {
-      if (QB.PreciseSelect && QB.PreciseSelect.close) QB.PreciseSelect.close();
-    } catch (_) {}
+  /** Borrador activo: memoria o localStorage (banner «En curso»). */
+  function activeDraftPack_() {
+    if (state.cartilla) {
+      return {
+        cartilla: state.cartilla,
+        muestraIndex: state.muestraIndex || 0,
+      };
+    }
     const draft = loadDraft_();
     if (draft && draft.cartilla) {
-      const cont = await feedback({
-        title: "Hay un borrador en curso",
-        text: "Solo puede haber una cartilla a la vez. Continúa para terminarla, o abandona la muestra para armar otra en otro lote.",
-        type: "warn",
-        confirmText: "Continuar",
-        cancelText: "Abandonar muestra",
-      });
-      if (cont) {
-        openCartilla(draft.cartilla, draft.muestraIndex || 0);
-        return;
-      }
-      // Abandonar: limpia todo y abre sheet fresco
-      cartillaSelectGuardUntil_ = Date.now() + 900;
-      clearDraft_();
-      if (state.cartilla) state.cartilla = null;
-      renderHomeList();
+      return {
+        cartilla: draft.cartilla,
+        muestraIndex: draft.muestraIndex || 0,
+      };
     }
-    // Siempre limpiar antes de mostrar (guardar / abandonar / CREAR de nuevo)
-    resetCreateForm_();
-    const modal = $("#create-modal");
-    if (!modal) return;
-    createOpenedAt_ = Date.now();
-    modal.hidden = false;
-    modal.classList.add("open");
-    document.body.classList.add("create-modal-open");
+    return null;
+  }
+
+  let crearBusy_ = false;
+  /** Tras Salir de cartilla: ignora CREAR (mismo toque no abre «en curso»). */
+  let crearIgnoreUntil_ = 0;
+
+  /**
+   * CREAR-1 (home): si hay cartilla en curso → Continuar | Abandonar.
+   * No abre otra hasta que elijan (anti ghost-tap del mismo toque).
+   */
+  async function openCreateModal(e) {
+    if (crearBusy_) return;
+    if (Date.now() < crearIgnoreUntil_) return;
+    if (!requireSession_()) return;
+    if (e) {
+      try {
+        e.preventDefault();
+        e.stopPropagation();
+      } catch (_) {}
+    }
+    crearBusy_ = true;
+    try {
+      try {
+        if (QB.PreciseSelect && QB.PreciseSelect.close) QB.PreciseSelect.close();
+      } catch (_) {}
+
+      // Releer SIEMPRE el borrador del banner «En curso»
+      const pack = activeDraftPack_();
+      if (pack && pack.cartilla) {
+        const c = pack.cartilla;
+        const where =
+          [c.loteCode || c.modulo, c.fecha].filter(Boolean).join(" · ") ||
+          "cartilla en curso";
+        const choice = await feedback({
+          title: "Hay una cartilla en curso",
+          text: `${where}\n\n¿Quieres continuar con esa, o abandonarla para crear otra?`,
+          type: "warn",
+          confirmText: "Continuar",
+          cancelText: "Abandonar",
+          armMs: 700,
+        });
+        // true = Continuar · false = Abandonar · null = dismiss / interrumpido
+        if (choice === true) {
+          openCartilla(pack.cartilla, pack.muestraIndex || 0);
+          return;
+        }
+        if (choice !== false) {
+          // No eligió: no abrir CREAR ni borrar borrador
+          return;
+        }
+        // Abandonar explícito
+        cartillaSelectGuardUntil_ = Date.now() + 900;
+        clearDraft_();
+        state.cartilla = null;
+        state.muestraIndex = 0;
+        renderHomeList();
+      }
+
+      // Sin borrador (o ya abandonado): sheet limpio
+      resetCreateForm_();
+      const modal = $("#create-modal");
+      if (!modal) return;
+      createOpenedAt_ = Date.now();
+      modal.hidden = false;
+      modal.classList.add("open");
+      document.body.classList.add("create-modal-open");
+    } finally {
+      // Pequeño hold: evita segundo CREAR del mismo gesto
+      setTimeout(() => {
+        crearBusy_ = false;
+      }, 400);
+    }
   }
 
   /**
-   * SIGUIENTE (btn-crear-2): abre ¿Fenología o Proyecciones? (columna Tipo).
+   * SIGUIENTE: valida orden Cartilla → Fundo → Módulo, luego Tipo.
    * CREAR-1 solo abre el sheet; no debe disparar este select (anti ghost-tap).
    */
   function onCreateOkPress_() {
@@ -1149,7 +1260,23 @@ QB.App = (() => {
     // El mismo toque de CREAR-1 no debe activar SIGUIENTE
     if (Date.now() - createOpenedAt_ < 550) return;
     cartillaSelectGuardUntil_ = 0;
-    if (!state.create.tipoId || !state.create.tipoLabel) {
+    const c = state.create;
+    if (!c.cartillaId || !c.cartillaLabel) {
+      toast("Primero elige la cartilla", "warn");
+      openCartillaSelect();
+      return;
+    }
+    if (!c.fundoId) {
+      toast("Ahora elige el fundo", "warn");
+      openFundoSelect();
+      return;
+    }
+    if (!c.modulo) {
+      toast("Ahora elige el módulo", "warn");
+      openModuloSelect();
+      return;
+    }
+    if (!c.tipoId || !c.tipoLabel) {
       openTipoEvalSelect_();
       return;
     }
@@ -1184,8 +1311,14 @@ QB.App = (() => {
         state.create.tipoId = opt.id;
         state.create.tipoLabel = opt.label;
         writePrefs_({ tipoId: opt.id, tipoLabel: opt.label });
-        if (state.create.fundoId && state.create.modulo && state.create.cartillaId) {
+        // Tras Tipo: solo confirma si ya hay Cartilla → Fundo → Módulo
+        if (state.create.cartillaId && state.create.fundoId && state.create.modulo) {
           confirmCreate();
+          return;
+        }
+        if (!state.create.cartillaId) {
+          toast("Primero elige la cartilla", "warn");
+          setTimeout(() => openCartillaSelect(), 180);
           return;
         }
         if (!state.create.fundoId) {
@@ -1227,7 +1360,7 @@ QB.App = (() => {
     if (!document.body.classList.contains("create-modal-open")) return;
     if (Date.now() - createOpenedAt_ < 550) return;
     QB.PreciseSelect.open({
-      title: "Cartilla",
+      title: "1 · Cartilla",
       hideSearch: true,
       value: state.create.cartillaId || "",
       getOptions: (q) => cartillaOptions_(q),
@@ -1240,13 +1373,23 @@ QB.App = (() => {
         state.create.cartillaLabel = opt.label;
         setSelectLabel($("#sel-cartilla"), opt.label);
         writePrefs_({ cartillaId: opt.id, cartillaLabel: opt.label });
+        // Siguiente paso: Fundo
+        if (!state.create.fundoId) {
+          setTimeout(() => openFundoSelect(), 200);
+        }
       },
     });
   }
 
   function openFundoSelect() {
+    if (!document.body.classList.contains("create-modal-open")) return;
+    if (!state.create.cartillaId) {
+      toast("Primero elige la cartilla", "warn");
+      openCartillaSelect();
+      return;
+    }
     QB.PreciseSelect.open({
-      title: "Fundo",
+      title: "2 · Fundo",
       hideSearch: true,
       value: state.create.fundoId,
       getOptions: (q) => fundoOptions_(q),
@@ -1265,17 +1408,28 @@ QB.App = (() => {
           state.create.loteMeta = null;
           setSelectLabel($("#sel-modulo"), "");
         }
+        // Siguiente paso: Módulo
+        if (!state.create.modulo) {
+          setTimeout(() => openModuloSelect(), 200);
+        }
       },
     });
   }
 
   function openModuloSelect() {
+    if (!document.body.classList.contains("create-modal-open")) return;
+    if (!state.create.cartillaId) {
+      toast("Primero elige la cartilla", "warn");
+      openCartillaSelect();
+      return;
+    }
     if (!state.create.fundoId) {
       toast("Elige fundo primero", "warn");
+      openFundoSelect();
       return;
     }
     QB.PreciseSelect.open({
-      title: "Módulo",
+      title: "3 · Módulo",
       hideSearch: true,
       value: state.create.modulo,
       getOptions: (q) => QB.Data.moduloOptions(q, state.create.fundoId),
@@ -1323,14 +1477,10 @@ QB.App = (() => {
     }
     c.evaluadorId = session.dni;
     c.evaluadorNombre = session.nombre || c.evaluadorNombre || "";
+    // Orden fijo: Cartilla → Fundo → Módulo → Tipo
     if (!c.cartillaId || !c.cartillaLabel) {
       toast("Selecciona cartilla", "warn");
       openCartillaSelect();
-      return;
-    }
-    if (!c.tipoId || !c.tipoLabel) {
-      toast("Elige qué vas a evaluar: Fenología o Proyecciones", "warn");
-      openTipoEvalSelect_();
       return;
     }
     const cartillaDef = (QB.CARTILLAS || []).find((x) => x.id === c.cartillaId);
@@ -1340,10 +1490,17 @@ QB.App = (() => {
     }
     if (!c.fundoId) {
       toast("Selecciona fundo", "warn");
+      openFundoSelect();
       return;
     }
     if (!c.modulo) {
       toast("Selecciona módulo", "warn");
+      openModuloSelect();
+      return;
+    }
+    if (!c.tipoId || !c.tipoLabel) {
+      toast("Elige qué vas a evaluar: Fenología o Proyecciones", "warn");
+      openTipoEvalSelect_();
       return;
     }
     const campana = normalizeCampana_(c.campana || defaultCampana_());
@@ -2453,12 +2610,18 @@ QB.App = (() => {
       type: "warn",
       confirmText: "Salir",
       cancelText: "Seguir",
+      armMs: 280,
     });
-    if (!ok) return;
+    // Solo Salir explícito (true). Seguir=false / dismiss=null → quedarse
+    if (ok !== true) return;
     saveDraft_();
     state.cartilla = null;
+    // El mismo toque de «Salir» no debe disparar CREAR ni el aviso «en curso»
+    crearIgnoreUntil_ = Date.now() + 1000;
+    crearBusy_ = false;
     showScreen("home");
     renderHomeList();
+    ensureHomeCreateBar_();
   }
 
   /* ——— Home list ——— */
@@ -3422,7 +3585,12 @@ QB.App = (() => {
       const fen = Number(c.fenologia || 0) || 0;
       const proy = Number(c.proyecciones || 0) || 0;
       const tot = Number(c.all || fen + proy) || 0;
-      if (!tot) {
+      const t = String(histFilters_.tipo || "");
+      if (t === "fenologia" && fen === 0) {
+        legend.textContent = "No tenemos registros de Fenología";
+      } else if (t === "proyecciones" && proy === 0) {
+        legend.textContent = "No tenemos registros de Proyecciones";
+      } else if (!tot) {
         legend.textContent = "Sin registros en el rango seleccionado";
       } else {
         legend.textContent = `${fen} Fenología · ${proy} Proyecciones · ${tot} en total`;
@@ -3732,10 +3900,31 @@ QB.App = (() => {
     const today = todayISO_();
     if (!histFilters_.desde) histFilters_.desde = today;
     if (!histFilters_.hasta) histFilters_.hasta = today;
+    // Siempre arranca en Todos (tipo)
+    histFilters_.tipo = "";
     if (!histEvalUserCleared_ && !histFilters_.dni && session && session.dni) {
       histFilters_.dni = String(session.dni).replace(/\D/g, "");
     }
     populateHistFilterOptions_();
+  }
+
+  function setHistTipoActive_(tipoId) {
+    const want = String(tipoId || "");
+    histFilters_.tipo = want;
+    document.querySelectorAll(".hist-tipo-btn[data-tipo]").forEach((btn) => {
+      const id = btn.getAttribute("data-tipo") || "";
+      btn.classList.toggle("is-active", id === want);
+    });
+  }
+
+  function histEmptyMessage_() {
+    if (histFilters_.tipo === "fenologia") {
+      return "No tenemos registros de Fenología para estos filtros.";
+    }
+    if (histFilters_.tipo === "proyecciones") {
+      return "No tenemos registros de Proyecciones para estos filtros.";
+    }
+    return "No tenemos registros para estos filtros.";
   }
 
   async function refreshRemoteHistorial_(force) {
@@ -4397,14 +4586,26 @@ QB.App = (() => {
       } · ${gN} muestra${gN === 1 ? "" : "s"} · Total ${fmtNum_(grandTotal, 1)}`;
     }
 
+    const kgPanel = listEl.closest(".hist-kg-panel");
     if (!rows.length) {
       listEl.innerHTML = "";
+      if (kgPanel) kgPanel.hidden = true;
       if (emptyEl) {
         emptyEl.hidden = false;
-        emptyEl.textContent = "Sin registros para estos filtros.";
+        emptyEl.textContent = histEmptyMessage_();
+      }
+      if (sumEl) {
+        const tipoTxt =
+          histFilters_.tipo === "proyecciones"
+            ? "Proyecciones"
+            : histFilters_.tipo === "fenologia"
+              ? "Fenología"
+              : "Todos";
+        sumEl.textContent = `${tipoTxt} · 0 lotes · sin datos`;
       }
       return;
     }
+    if (kgPanel) kgPanel.hidden = false;
     if (emptyEl) emptyEl.hidden = true;
 
     listEl.innerHTML = `<table class="hist-kg-table hist-kg-compact">
@@ -4530,7 +4731,9 @@ QB.App = (() => {
   function fastTap_(el, handler) {
     if (!el) return;
     el.__fastHandler = handler;
-    if (el.dataset.fastTap === "1") return;
+    // No confiar solo en data-fast-tap del HTML: puede estar marcado sin listeners
+    if (el.__fastBound) return;
+    el.__fastBound = true;
     el.dataset.fastTap = "1";
     let armed = false;
     let last = 0;
@@ -4735,9 +4938,15 @@ QB.App = (() => {
     fastTap_($("#hist-filtro-desde"), () => openHistDatePicker_("desde"));
     fastTap_($("#hist-filtro-hasta"), () => openHistDatePicker_("hasta"));
     document.querySelectorAll(".hist-tipo-btn[data-tipo]").forEach((btn) => {
-      fastTap_(btn, () => {
-        histFilters_.tipo = String(btn.getAttribute("data-tipo") || "");
-        syncHistFilterLabels_();
+      fastTap_(btn, (e) => {
+        if (e) {
+          try {
+            e.preventDefault();
+            e.stopPropagation();
+          } catch (_) {}
+        }
+        const id = String(btn.getAttribute("data-tipo") || "");
+        setHistTipoActive_(id);
         if (state.screen === "historial") renderHistorial();
       });
     });
