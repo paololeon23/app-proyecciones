@@ -17,9 +17,8 @@ function New-Cartilla($clientId, $sampleCount) {
       'Nombre' = $nombre
       'N° Muestra' = $i
       'N° Ramas' = 2
-      'Yema Productiva' = 1
-      'Yema Abierta' = 1
       'Yemas Cerradas' = 0
+      'Yema Abierta' = 1
       'Yemas Muertas' = 0
       'Botón Floral' = 0
       'Flor' = 0

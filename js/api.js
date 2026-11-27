@@ -822,9 +822,8 @@ QB.API = (() => {
       });
     } else {
       o.n_ramas = r["N° Ramas"] ?? "";
-      o.yema_productiva = r["Yema Productiva"] ?? "";
-      o.yema_abierta = r["Yema Abierta"] ?? "";
       o.yemas_cerradas = r["Yemas Cerradas"] ?? "";
+      o.yema_abierta = r["Yema Abierta"] ?? "";
       o.yemas_muertas = r["Yemas Muertas"] ?? "";
       o.boton_floral = r["Botón Floral"] ?? "";
       o.flor = r.Flor ?? r.flor ?? "";
@@ -836,8 +835,8 @@ QB.API = (() => {
       o.e5 = r["E5 (Maduro)"] ?? "";
     }
     // aliases legados
-    o.yema = o.yema_productiva;
     o.abierta = o.yema_abierta;
+    o.cerrada = o.yemas_cerradas;
     return o;
   }
 
@@ -1067,10 +1066,33 @@ QB.API = (() => {
           }
         }
       }
-      const mod = String(row.Modulo || "").trim() || "—";
-      const tur =
-        row.Turno != null && row.Turno !== "" ? String(row.Turno).trim() : "—";
-      const lote = String(row.Lote || "").trim() || "—";
+      // Vacío (no "—"): enrichHistRow_ / canon recupera M# desde Lote (M1T2L5)
+      let mod = String(row.Modulo || "").trim();
+      if (mod === "—" || mod === "-" || mod === "_" || mod === "–") mod = "";
+      let tur =
+        row.Turno != null && row.Turno !== "" ? String(row.Turno).trim() : "";
+      if (tur === "—" || tur === "-" || tur === "_" || tur === "–") tur = "";
+      const lote = String(row.Lote || "").trim() || "";
+      // Si Modulo vacío y Turno trae M1/M7 (mal cargado), pásalo a módulo
+      if (!mod && /^M0*\d+$/i.test(tur)) {
+        mod = tur.toUpperCase().replace(/^M0+/, "M");
+        if (!/^M\d+$/i.test(mod)) mod = tur.toUpperCase();
+        tur = "";
+      }
+      // Recupera M# / T# desde código de lote
+      if ((!mod || !tur) && lote) {
+        const pm = String(lote)
+          .toUpperCase()
+          .replace(/\s+/g, "")
+          .match(/^M0*(\d+)T0*(\d+)L/i);
+        if (pm) {
+          if (!mod) mod = `M${pm[1]}`;
+          if (!tur) tur = String(Number(pm[2]) || pm[2]);
+        }
+      }
+      if (!mod) mod = "—";
+      if (!tur) tur = "—";
+      const loteKey = lote || "—";
       let dni = String(row.DNI != null && row.DNI !== "" ? row.DNI : "")
         .replace(/\.0+$/, "")
         .replace(/\D/g, "");
@@ -1078,7 +1100,7 @@ QB.API = (() => {
         const mEv = String(row.Evaluador || "").match(/(\d{8})/);
         dni = mEv ? mEv[1] : "";
       }
-      const key = `${fecha}|${mod}|${tur}|${lote}|${dni}`;
+      const key = `${fecha}|${mod}|${tur}|${loteKey}|${dni}`;
       if (!map.has(key)) {
         map.set(key, {
           clientId: `sheet_${key}`,
@@ -1087,11 +1109,13 @@ QB.API = (() => {
           source: "sheet",
           fecha,
           at: fecha ? `${fecha}T23:59:59.000-05:00` : new Date().toISOString(),
-          lote,
-          loteCode: lote,
+          lote: loteKey,
+          loteCode: lote || loteKey,
           loteNum: row.Lotes != null && row.Lotes !== "" ? String(row.Lotes) : "",
           modulo: mod,
           turno: tur,
+          etapa: String(row.Etapa || row.etapa || "").trim(),
+          fundo: String(row.Etapa || row.etapa || "").trim(),
           variedad: row.Variedad || "",
           area: row.Area != null && row.Area !== "" ? row.Area : "",
           dni,

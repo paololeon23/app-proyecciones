@@ -32,9 +32,8 @@ function New-SampleRow($n, $e5) {
     'Nombre' = $nombre
     'N° Muestra' = $n
     'N° Ramas' = 3
-    'Yema Productiva' = 2
-    'Yema Abierta' = 1
     'Yemas Cerradas' = 1
+    'Yema Abierta' = 1
     'Yemas Muertas' = 0
     'Botón Floral' = 0
     'Flor' = 0

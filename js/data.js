@@ -162,6 +162,49 @@ QB.Data = (() => {
     return "";
   }
 
+  /**
+   * Resuelve Licapa I–IV desde texto de etapa/fundo o catálogo.
+   * M5 sin etapa → Licapa I (árbol oficial).
+   */
+  function resolveEtapaLabel_(etapaRaw, modulo, loteId) {
+    const kindFromText = etapaKind(etapaRaw);
+    if (kindFromText) return fundoLabel_(kindFromText) || String(etapaRaw || "").trim();
+
+    const loteKey = String(loteId || "").trim();
+    if (loteKey) {
+      const meta = loteMeta(loteKey);
+      const k = etapaKind(meta && meta.etapa);
+      if (k) return fundoLabel_(k);
+    }
+
+    const mod = normalizeModulo_(modulo);
+    if (mod && lotesTree) {
+      const hits = [];
+      Object.keys(lotesTree).forEach((etapa) => {
+        const mods = lotesTree[etapa] || {};
+        if (mods[mod] || mods[String(modulo || "").trim()]) {
+          hits.push(etapa);
+        }
+      });
+      if (hits.length === 1) return hits[0];
+      // Preferencia Licapa I si el módulo está ahí (p.ej. M5)
+      const preferI = hits.find((e) => etapaKind(e) === "I");
+      if (preferI) return preferI;
+      if (hits[0]) return hits[0];
+    }
+
+    // Fallback catálogo plano
+    if (mod) {
+      for (let i = 0; i < lotes.length; i++) {
+        const L = lotes[i];
+        if (normalizeModulo_(L.modulo) !== mod) continue;
+        const k = etapaKind(L.etapa);
+        if (k) return fundoLabel_(k);
+      }
+    }
+    return String(etapaRaw || "").trim() || "";
+  }
+
   /** ¿El lote pertenece al fundo seleccionado (I–IV)? Exacto: no mezcla I con II. */
   function matchesFundo_(loteEtapa, fundoId) {
     const want = String(fundoId || "").trim().toUpperCase();
@@ -759,5 +802,8 @@ QB.Data = (() => {
     lotesForModuloTurno,
     formatLoteCode,
     normalizeModulo: normalizeModulo_,
+    etapaKind,
+    fundoLabel: fundoLabel_,
+    resolveEtapaLabel: resolveEtapaLabel_,
   };
 })();

@@ -2956,28 +2956,42 @@ QB.App = (() => {
     return [...new Set(keys.filter(Boolean))];
   }
 
+  /**
+   * Valor que entra al promedio (regla /escaneadas):
+   * vacío / 0 / "-" → no cuentan (no diluyen).
+   */
+  function stageValueForAvg_(sample, fieldId) {
+    if (!sample || typeof sample !== "object") return null;
+    const keys = stageFieldKeys_(fieldId);
+    let raw = "";
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (sample[k] == null) continue;
+      const t = String(sample[k]).trim();
+      if (!t || t === "-" || t === "—") continue;
+      raw = t;
+      break;
+    }
+    if (!raw) return null;
+    const v = Number(String(raw).replace(",", "."));
+    if (!Number.isFinite(v) || v === 0) return null;
+    return v;
+  }
+
+  function meanOfNums_(vals) {
+    const nums = (vals || []).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);
+    if (!nums.length) return null;
+    return nums.reduce((a, b) => a + b, 0) / nums.length;
+  }
+
   function avgStage_(samples, fieldId) {
     if (!Array.isArray(samples) || !samples.length) return null;
-    const keys = stageFieldKeys_(fieldId);
-    let sum = 0;
-    let n = 0;
+    const vals = [];
     samples.forEach((s) => {
-      if (!s || typeof s !== "object") return;
-      let raw = "";
-      for (let i = 0; i < keys.length; i++) {
-        const k = keys[i];
-        if (s[k] != null && String(s[k]).trim() !== "") {
-          raw = s[k];
-          break;
-        }
-      }
-      const v = Number(String(raw).replace(",", "."));
-      if (Number.isFinite(v)) {
-        sum += v;
-        n += 1;
-      }
+      const v = stageValueForAvg_(s, fieldId);
+      if (v != null) vals.push(v);
     });
-    return n ? sum / n : null;
+    return meanOfNums_(vals);
   }
 
   function stageKg_(avgCount, area) {
@@ -2996,17 +3010,7 @@ QB.App = (() => {
   }
 
   function avgE5_(samples) {
-    if (!Array.isArray(samples) || !samples.length) return null;
-    let sum = 0;
-    let n = 0;
-    samples.forEach((s) => {
-      const v = Number(String(s && s.e5 != null ? s.e5 : "").replace(",", "."));
-      if (Number.isFinite(v)) {
-        sum += v;
-        n += 1;
-      }
-    });
-    return n ? sum / n : null;
+    return avgStage_(samples, "e5");
   }
 
   function positiveArea_(v) {
@@ -3015,15 +3019,125 @@ QB.App = (() => {
     return Number.isFinite(n) && n > 0 ? n : null;
   }
 
-  function enrichHistRow_(raw, statusHint) {
-    const loteCode = raw.lote || raw.loteCode || "";
-    const loteKey = raw.loteNum || loteCode;
+  /** Vacío / guión / _ → no cuenta como módulo/turno real */
+  function isBlankHistToken_(v) {
+    const s = String(v ?? "").trim();
+    return (
+      !s ||
+      s === "—" ||
+      s === "–" ||
+      s === "-" ||
+      s === "_" ||
+      s === "." ||
+      s.toLowerCase() === "null" ||
+      s.toLowerCase() === "undefined"
+    );
+  }
+
+  /** Parsea código M1T2L5 / M01T02L05 → { modulo, turno, lote } */
+  function parseLoteCodeParts_(code) {
+    const s = String(code || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+    if (!s) return null;
+    const m = s.match(/^M0*(\d+)T0*(\d+)L([0-9]+[A-Z]?)$/i);
+    if (!m) return null;
+    return {
+      modulo: `M${m[1]}`,
+      turno: String(Number(m[2]) || m[2]),
+      lote: String(m[3]).replace(/^0+(?=\d)/, "") || m[3],
+    };
+  }
+
+  function looksLikeModuloToken_(v) {
+    return /^M0*\d+$/i.test(String(v || "").trim());
+  }
+
+  /**
+   * Canoniza módulo + turno para historial.
+   * Corrige: Modulo vacío/"_" y Turno con "M1" (módulo mal guardado).
+   */
+  function canonHistModTur_(raw) {
+    raw = raw || {};
+    const loteCode = String(raw.loteCode || raw.lote || "").trim();
+    const loteNum = String(raw.loteNum || "").trim();
+    const parsed = parseLoteCodeParts_(loteCode);
+    const loteKey = loteNum || loteCode;
     const meta =
       (QB.Data && QB.Data.loteMeta && loteKey ? QB.Data.loteMeta(loteKey) : null) || {};
     const metaAlt =
       loteCode && loteCode !== loteKey && QB.Data && QB.Data.loteMeta
         ? QB.Data.loteMeta(loteCode)
         : null;
+
+    let mod = String(raw.modulo || "").trim();
+    let tur = raw.turno != null && raw.turno !== "" ? String(raw.turno).trim() : "";
+
+    if (isBlankHistToken_(mod)) mod = "";
+    if (isBlankHistToken_(tur)) tur = "";
+
+    // Turno trae código de módulo (M1/M7) y módulo vacío → intercambiar
+    if (!mod && looksLikeModuloToken_(tur)) {
+      mod = (QB.Data && QB.Data.normalizeModulo
+        ? QB.Data.normalizeModulo(tur)
+        : String(tur).toUpperCase()) || tur.toUpperCase();
+      tur = "";
+    }
+
+    if (!mod && parsed && parsed.modulo) mod = parsed.modulo;
+    if (!mod && meta.modulo) mod = String(meta.modulo);
+    if (!mod && metaAlt && metaAlt.modulo) mod = String(metaAlt.modulo);
+    if (mod && QB.Data && QB.Data.normalizeModulo) {
+      mod = QB.Data.normalizeModulo(mod) || mod;
+    }
+
+    if (!tur && parsed && parsed.turno) tur = parsed.turno;
+    if (!tur && meta.turno) tur = String(meta.turno);
+    if (!tur && metaAlt && metaAlt.turno) tur = String(metaAlt.turno);
+
+    // Si turno sigue pareciendo módulo y ya tenemos módulo distinto, descarta
+    if (tur && looksLikeModuloToken_(tur) && mod && normalizeModCmp_(tur) === normalizeModCmp_(mod)) {
+      tur = parsed && parsed.turno ? parsed.turno : "";
+    }
+
+    // Licapa I–IV: Etapa hoja → meta → árbol (M5 → Licapa I)
+    let etapa = String(raw.etapa || raw.fundo || raw.fundoLabel || "").trim();
+    if (isBlankHistToken_(etapa)) etapa = "";
+    if (QB.Data && QB.Data.resolveEtapaLabel) {
+      etapa =
+        QB.Data.resolveEtapaLabel(
+          etapa || (meta && meta.etapa) || (metaAlt && metaAlt.etapa) || "",
+          mod,
+          loteCode || loteNum || (parsed && parsed.lote) || ""
+        ) || etapa;
+    } else if (!etapa) {
+      etapa = String((meta && meta.etapa) || (metaAlt && metaAlt.etapa) || "").trim();
+    }
+
+    return {
+      modulo: mod || "—",
+      turno: tur || "—",
+      etapa: etapa || "—",
+      meta,
+      metaAlt,
+      loteCode,
+      parsed,
+    };
+  }
+
+  function normalizeModCmp_(v) {
+    const s = String(v || "")
+      .trim()
+      .toUpperCase();
+    const m = s.match(/^M?0*(\d+)$/i);
+    return m ? `M${m[1]}` : s;
+  }
+
+  function enrichHistRow_(raw, statusHint) {
+    const canon = canonHistModTur_(raw);
+    const meta = canon.meta || {};
+    const metaAlt = canon.metaAlt || null;
     const rowArea =
       Array.isArray(raw.samples) && raw.samples[0]
         ? raw.samples[0].Area ?? raw.samples[0].area
@@ -3046,18 +3160,16 @@ QB.App = (() => {
       fecha: raw.fecha || (raw.at ? String(raw.at).slice(0, 10) : todayISO_()),
       at: raw.at || "",
       status: pending ? "pending" : "sent",
-      modulo: raw.modulo || meta.modulo || (metaAlt && metaAlt.modulo) || "—",
-      turno:
-        raw.turno != null && raw.turno !== ""
-          ? String(raw.turno)
-          : meta.turno || (metaAlt && metaAlt.turno) || "—",
+      modulo: canon.modulo,
+      turno: canon.turno,
+      etapa: canon.etapa,
       variedad: raw.variedad || meta.variedad || (metaAlt && metaAlt.variedad) || "—",
       area,
       bayas,
       peso,
       kgHa,
       kgTot,
-      loteCode,
+      loteCode: canon.loteCode || raw.lote || raw.loteCode || "",
     };
   }
 
@@ -3132,8 +3244,9 @@ QB.App = (() => {
   }
 
   function loteKeyHist_(h) {
-    const mod = String((h && h.modulo) || "—");
-    const tur = String((h && (h.turno != null ? h.turno : "—")) || "—");
+    const canon = canonHistModTur_(h || {});
+    const mod = canon.modulo || "—";
+    const tur = canon.turno || "—";
     const lote = String((h && (h.loteCode || h.lote)) || "—");
     const fecha = String((h && h.fecha) || "").slice(0, 10);
     return `${fecha}|${mod}|${tur}|${lote}`;
@@ -3391,25 +3504,9 @@ QB.App = (() => {
     });
   }
 
-  async function openHistEvalFilter_() {
+  function openHistEvalFilter_() {
     if (!QB.PreciseSelect) return;
-    // Lista = hoja Evaluadores (activos). No el JSON embebido viejo.
-    if (QB.Data && QB.Data.refreshEvaluadoresFromSheet) {
-      try {
-        await QB.Data.refreshEvaluadoresFromSheet(true);
-      } catch (_) {}
-    }
-    // Si el DNI elegido ya no está en la hoja, limpia el filtro
-    if (
-      histFilters_.dni &&
-      QB.Data &&
-      QB.Data.personByDni &&
-      !QB.Data.personByDni("evaluador", histFilters_.dni)
-    ) {
-      histFilters_.dni = "";
-      histEvalUserCleared_ = true;
-      syncHistFilterLabels_();
-    }
+    // Abrir YA con caché local (no esperar GET a Apps Script → lentitud)
     const opts = (q) => {
       const base =
         QB.Data && QB.Data.evaluadorOptions ? QB.Data.evaluadorOptions(q) : [];
@@ -3421,6 +3518,16 @@ QB.App = (() => {
       }));
       return [{ id: "", label: "Todos", meta: "Sin filtro" }, ...mapped];
     };
+    if (
+      histFilters_.dni &&
+      QB.Data &&
+      QB.Data.personByDni &&
+      !QB.Data.personByDni("evaluador", histFilters_.dni)
+    ) {
+      histFilters_.dni = "";
+      histEvalUserCleared_ = true;
+      syncHistFilterLabels_();
+    }
     QB.PreciseSelect.open({
       title: "Evaluador",
       value: histFilters_.dni || "",
@@ -3433,6 +3540,10 @@ QB.App = (() => {
         if (state.screen === "historial") renderHistorial();
       },
     });
+    // Refresh en background (sin force: respeta TTL 5 min)
+    if (QB.Data && QB.Data.refreshEvaluadoresFromSheet && navigator.onLine) {
+      QB.Data.refreshEvaluadoresFromSheet(false).catch(() => {});
+    }
   }
 
   function filterHistorialByFilters_(list) {
@@ -3572,6 +3683,8 @@ QB.App = (() => {
           loteNum: x.loteNum || "",
           modulo: x.modulo || "",
           turno: x.turno || "",
+          etapa: x.etapa || x.fundo || "",
+          fundo: x.fundo || x.etapa || "",
           variedad: x.variedad || "",
           area: x.area,
           evaluador: x.evaluador || "",
@@ -3592,6 +3705,8 @@ QB.App = (() => {
         loteNum: h.loteNum || loc.loteNum || "",
         modulo: h.modulo || loc.modulo || "",
         turno: h.turno || loc.turno || "",
+        etapa: h.etapa || h.fundo || loc.etapa || loc.fundo || "",
+        fundo: h.fundo || h.etapa || loc.fundo || loc.etapa || "",
         area: h.area != null && h.area !== "" ? h.area : loc.area,
       };
     });
@@ -3699,92 +3814,62 @@ QB.App = (() => {
     return m ? m[1] : code || "—";
   }
 
+  function fundoSortKey_(label) {
+    const k =
+      (QB.Data && QB.Data.etapaKind && QB.Data.etapaKind(label)) ||
+      String(label || "");
+    const order = { I: 1, II: 2, III: 3, IV: 4, "I/II": 5 };
+    return order[k] || 99;
+  }
+
   /**
-   * Filas KG por módulo+turno+N° lote.
-   * Si hay 2+ registros del mismo lote → promedio ponderado por N° muestras.
+   * Filas por Licapa+módulo+turno+lote (regla /escaneadas):
+   * - Solo última cartilla del lote
+   * - Promedio de muestras: solo valores con dato (vacío/0/- no diluyen)
    */
   function buildKgRows_(history) {
     const stages = QB.HIST_KG_STAGES || [];
     const byKey = new Map();
     (history || []).forEach((h) => {
       const enriched = enrichHistRow_(h, h.status === "pending" ? "pending" : "sent");
+      const fundo = enriched.etapa || "—";
       const mod = enriched.modulo || "—";
       const tur = String(enriched.turno || "—");
       const loteNum = histLoteNum_(h, enriched);
       const loteCode = enriched.loteCode || h.lote || h.loteCode || "";
-      const key = `${mod}|${tur}|${loteNum}`;
+      const key = `${fundo}|${mod}|${tur}|${loteNum}`;
       const at = new Date(h.at || 0).getTime() || 0;
-      const samples = h.samples || [];
+      const prev = byKey.get(key);
+      // Solo la última cartilla de ese lote
+      if (prev && at < prev.at) {
+        prev.regCount = (Number(prev.regCount) || 1) + 1;
+        return;
+      }
+      const samples = Array.isArray(h.samples) ? h.samples : [];
       let nMuestras = samples.length;
       const declared = Number(h.sampleCount);
       if (Number.isFinite(declared) && declared > nMuestras) nMuestras = declared;
-      samples.forEach((s) => {
-        const nn = Number(s && s.n);
-        if (Number.isFinite(nn) && nn > nMuestras) nMuestras = nn;
-      });
-      if (!nMuestras) nMuestras = 0;
+      if (!nMuestras) nMuestras = samples.length || 0;
+
       const stageAvgPack_ = (id) => {
-        let sum = 0;
-        const keys = stageFieldKeys_(id);
+        const vals = [];
         samples.forEach((s) => {
-          if (!s) return;
-          let raw = "";
-          for (let i = 0; i < keys.length; i++) {
-            if (s[keys[i]] != null && String(s[keys[i]]).trim() !== "") {
-              raw = s[keys[i]];
-              break;
-            }
-          }
-          const v = Number(String(raw).replace(",", "."));
-          sum += Number.isFinite(v) ? v : 0;
+          const v = stageValueForAvg_(s, id);
+          if (v != null) vals.push(v);
         });
-        return {
-          avg: nMuestras > 0 ? sum / nMuestras : null,
-          n: nMuestras,
-          sum,
-        };
+        const avg = meanOfNums_(vals);
+        const sum = vals.reduce((a, b) => a + b, 0);
+        return { avg, n: vals.length, sum };
       };
+      const aFc = stageAvgPack_("boton_floral"); // 1) Flor cerrada
+      const aFa = stageAvgPack_("flor"); // 2) Flor abierta
+      const aCu = stageAvgPack_("cuaja"); // 3) Cuajo
       const a1 = stageAvgPack_("e1");
       const a2 = stageAvgPack_("e2");
       const a3 = stageAvgPack_("e3");
       const a4 = stageAvgPack_("e4");
       const a5 = stageAvgPack_("e5");
-      const prev = byKey.get(key);
-      if (prev) {
-        // 2+ registros del mismo lote → acumula sumas / muestras (promedio)
-        prev.sampleCount = (Number(prev.sampleCount) || 0) + nMuestras;
-        prev.e1Sum = (Number(prev.e1Sum) || 0) + (Number(a1.sum) || 0);
-        prev.e2Sum = (Number(prev.e2Sum) || 0) + (Number(a2.sum) || 0);
-        prev.e3Sum = (Number(prev.e3Sum) || 0) + (Number(a3.sum) || 0);
-        prev.e4Sum = (Number(prev.e4Sum) || 0) + (Number(a4.sum) || 0);
-        prev.e5Sum = (Number(prev.e5Sum) || 0) + (Number(a5.sum) || 0);
-        prev.e1N = prev.sampleCount;
-        prev.e2N = prev.sampleCount;
-        prev.e3N = prev.sampleCount;
-        prev.e4N = prev.sampleCount;
-        prev.e5N = prev.sampleCount;
-        const n = prev.sampleCount;
-        prev.e1Avg = n > 0 ? prev.e1Sum / n : null;
-        prev.e2Avg = n > 0 ? prev.e2Sum / n : null;
-        prev.e3Avg = n > 0 ? prev.e3Sum / n : null;
-        prev.e4Avg = n > 0 ? prev.e4Sum / n : null;
-        prev.e5Avg = n > 0 ? prev.e5Sum / n : null;
-        prev.total =
-          (Number(prev.e1Avg) || 0) +
-          (Number(prev.e2Avg) || 0) +
-          (Number(prev.e3Avg) || 0) +
-          (Number(prev.e4Avg) || 0) +
-          (Number(prev.e5Avg) || 0);
-        prev.regCount = (Number(prev.regCount) || 1) + 1;
-        if (at >= prev.at) {
-          prev.at = at;
-          prev.clientId = h.clientId || prev.clientId;
-          prev.lote = loteCode || prev.lote;
-          prev.fecha = enriched.fecha || h.fecha || prev.fecha;
-          if (enriched.area != null && enriched.area !== "") prev.area = enriched.area;
-        }
-        return;
-      }
+      // Columna Total = suma E1…E5 de ESTA fila (como /escaneadas)
       const totalE =
         (Number(a1.avg) || 0) +
         (Number(a2.avg) || 0) +
@@ -3796,9 +3881,11 @@ QB.App = (() => {
         const avg2 = avg != null ? avg : avgStage_(samples, st.sheet);
         return stageKg_(avg2, enriched.area);
       });
+      const regCount = prev ? (Number(prev.regCount) || 1) + 1 : 1;
       byKey.set(key, {
         id: key,
         clientId: h.clientId || "",
+        fundo,
         mod,
         tur,
         lote: loteCode || loteNum,
@@ -3809,10 +3896,13 @@ QB.App = (() => {
         at,
         fecha: enriched.fecha || h.fecha || "",
         sampleCount: nMuestras,
-        regCount: 1,
+        regCount,
         kgs,
         totalKg: kgs.reduce((a, b) => a + b, 0),
         total: totalE,
+        fcAvg: aFc.avg,
+        faAvg: aFa.avg,
+        cuAvg: aCu.avg,
         e1Avg: a1.avg,
         e1N: a1.n,
         e1Sum: a1.sum,
@@ -3836,6 +3926,10 @@ QB.App = (() => {
       });
     });
     return [...byKey.values()].sort((a, b) => {
+      const cf = fundoSortKey_(a.fundo) - fundoSortKey_(b.fundo);
+      if (cf) return cf;
+      const lf = String(a.fundo).localeCompare(String(b.fundo), "es");
+      if (lf) return lf;
       const cm = String(a.mod).localeCompare(String(b.mod), "es");
       if (cm) return cm;
       const na = Number(a.tur) || 0;
@@ -3876,7 +3970,7 @@ QB.App = (() => {
       sub.textContent = `${row.mod} · Turno ${row.tur} · Peso ${fmtNum_(row.peso, 2)} g${
         row.area != null ? ` · Área ${fmtNum_(row.area, 2)} ha` : ""
       }${row.sampleCount ? ` · ${row.sampleCount} muestra${row.sampleCount === 1 ? "" : "s"}` : ""}${
-        row.regCount > 1 ? ` · ${row.regCount} registros (promedio)` : ""
+        row.regCount > 1 ? ` · última de ${row.regCount} cartillas` : ""
       }`;
     }
     body.innerHTML = `
@@ -3919,10 +4013,12 @@ QB.App = (() => {
       `<td class="hist-kg-stage-cell"><strong>${fmtNum_(n, 1)}</strong></td>`;
     const totalCell_ = (n) =>
       `<td class="hist-kg-total-cell"><strong>${fmtNum_(n, 1)}</strong></td>`;
-    // Promedio = suma / N° muestras
-    const promByMuestras_ = (sum, nMuestras) =>
-      nMuestras > 0 ? sum / nMuestras : null;
-    // Total columna = E1+E2+E3+E4+E5 (promedios)
+    // 1) Flor cerrada … 8) E5
+    const stageCells_ = (o) =>
+      `${promCell_(o.fc)}${promCell_(o.fa)}${promCell_(o.cu)}${promCell_(o.e1)}${promCell_(
+        o.e2
+      )}${promCell_(o.e3)}${promCell_(o.e4)}${promCell_(o.e5)}`;
+    // Columna Total = suma E1…E5 de esa misma fila (no incluye flor/cuajo)
     const sumE1aE5_ = (p1, p2, p3, p4, p5) =>
       (Number(p1) || 0) +
       (Number(p2) || 0) +
@@ -3930,125 +4026,206 @@ QB.App = (() => {
       (Number(p4) || 0) +
       (Number(p5) || 0);
 
-    let g1 = 0;
-    let g2 = 0;
-    let g3 = 0;
-    let g4 = 0;
-    let g5 = 0;
     let gN = 0;
-    const byMod = new Map();
+    const byFundo = new Map();
     rows.forEach((r) => {
-      const n = Number(r.sampleCount) || Number(r.e2N) || 0;
-      gN += n;
-      g1 += Number(r.e1Sum) || 0;
-      g2 += Number(r.e2Sum) || 0;
-      g3 += Number(r.e3Sum) || 0;
-      g4 += Number(r.e4Sum) || 0;
-      g5 += Number(r.e5Sum) || 0;
-      if (!byMod.has(r.mod)) byMod.set(r.mod, []);
-      byMod.get(r.mod).push(r);
+      gN += Number(r.sampleCount) || 0;
+      const f = String(r.fundo || "—");
+      if (!byFundo.has(f)) byFundo.set(f, []);
+      byFundo.get(f).push(r);
     });
-    const grandP1 = promByMuestras_(g1, gN);
-    const grandP2 = promByMuestras_(g2, gN);
-    const grandP3 = promByMuestras_(g3, gN);
-    const grandP4 = promByMuestras_(g4, gN);
-    const grandP5 = promByMuestras_(g5, gN);
+    // Total (fila abajo) = promedio de promedios de lote (solo lotes con dato)
+    const grandFc = meanOfNums_(rows.map((r) => r.fcAvg));
+    const grandFa = meanOfNums_(rows.map((r) => r.faAvg));
+    const grandCu = meanOfNums_(rows.map((r) => r.cuAvg));
+    const grandP1 = meanOfNums_(rows.map((r) => r.e1Avg));
+    const grandP2 = meanOfNums_(rows.map((r) => r.e2Avg));
+    const grandP3 = meanOfNums_(rows.map((r) => r.e3Avg));
+    const grandP4 = meanOfNums_(rows.map((r) => r.e4Avg));
+    const grandP5 = meanOfNums_(rows.map((r) => r.e5Avg));
     const grandTotal = sumE1aE5_(grandP1, grandP2, grandP3, grandP4, grandP5);
 
+    const avgPackFrom_ = (list, pick) => {
+      const vals = (list || []).map(pick);
+      return {
+        fc: meanOfNums_(vals.map((x) => x.fc)),
+        fa: meanOfNums_(vals.map((x) => x.fa)),
+        cu: meanOfNums_(vals.map((x) => x.cu)),
+        e1: meanOfNums_(vals.map((x) => x.e1)),
+        e2: meanOfNums_(vals.map((x) => x.e2)),
+        e3: meanOfNums_(vals.map((x) => x.e3)),
+        e4: meanOfNums_(vals.map((x) => x.e4)),
+        e5: meanOfNums_(vals.map((x) => x.e5)),
+      };
+    };
+
     const bodyRows = [];
-    const mods = [...byMod.keys()].sort((a, b) => String(a).localeCompare(String(b), "es"));
-    mods.forEach((mod) => {
-      const lotes = byMod.get(mod) || [];
-      let m1 = 0;
-      let m2 = 0;
-      let m3 = 0;
-      let m4 = 0;
-      let m5 = 0;
-      let mN = 0;
-      const groupId = String(mod);
-      const byTur = new Map();
-      lotes.forEach((L) => {
-        const n = Number(L.sampleCount) || Number(L.e2N) || 0;
-        mN += n;
-        m1 += Number(L.e1Sum) || 0;
-        m2 += Number(L.e2Sum) || 0;
-        m3 += Number(L.e3Sum) || 0;
-        m4 += Number(L.e4Sum) || 0;
-        m5 += Number(L.e5Sum) || 0;
-        const tur = String(L.tur || "—");
-        if (!byTur.has(tur)) byTur.set(tur, []);
-        byTur.get(tur).push(L);
+    const fundos = [...byFundo.keys()].sort((a, b) => {
+      const c = fundoSortKey_(a) - fundoSortKey_(b);
+      return c || String(a).localeCompare(String(b), "es");
+    });
+
+    fundos.forEach((fundo) => {
+      const fundoLotes = byFundo.get(fundo) || [];
+      let fN = 0;
+      const fundoId = String(fundo);
+      const byMod = new Map();
+      fundoLotes.forEach((L) => {
+        fN += Number(L.sampleCount) || 0;
+        const mod = String(L.mod || "—");
+        if (!byMod.has(mod)) byMod.set(mod, []);
+        byMod.get(mod).push(L);
       });
-      const turKeys = [...byTur.keys()].sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
-      const turBlocks = turKeys
-        .map((tur) => {
-          const turLotes = (byTur.get(tur) || []).slice().sort((a, b) => {
-            const la = Number(String(a.loteNum).replace(/\D/g, "")) || 0;
-            const lb = Number(String(b.loteNum).replace(/\D/g, "")) || 0;
-            return la - lb || String(a.loteNum).localeCompare(String(b.loteNum), "es");
+      const mods = [...byMod.keys()].sort((a, b) => {
+        const na = Number(String(a).replace(/\D/g, "")) || 0;
+        const nb = Number(String(b).replace(/\D/g, "")) || 0;
+        return na - nb || String(a).localeCompare(String(b), "es");
+      });
+      const modProms = [];
+      const modBlocks = mods
+        .map((mod) => {
+          const lotes = byMod.get(mod) || [];
+          let mN = 0;
+          const modId = `${fundoId}|${mod}`;
+          const byTur = new Map();
+          lotes.forEach((L) => {
+            mN += Number(L.sampleCount) || 0;
+            const tur = String(L.tur || "—");
+            if (!byTur.has(tur)) byTur.set(tur, []);
+            byTur.get(tur).push(L);
           });
-          let t1 = 0;
-          let t2 = 0;
-          let t3 = 0;
-          let t4 = 0;
-          let t5 = 0;
-          let tN = 0;
-          const turId = `${groupId}|${tur}`;
-          const loteRows = turLotes
-            .map((L) => {
-              const n = Number(L.sampleCount) || Number(L.e2N) || 0;
-              tN += n;
-              t1 += Number(L.e1Sum) || 0;
-              t2 += Number(L.e2Sum) || 0;
-              t3 += Number(L.e3Sum) || 0;
-              t4 += Number(L.e4Sum) || 0;
-              t5 += Number(L.e5Sum) || 0;
-              const label = L.loteLabel || `Lote ${L.loteNum || L.lote || "—"}`;
-              return `<tr class="lote-row is-collapsed" data-mod-group="${escapeAttr(
-                groupId
-              )}" data-tur-group="${escapeAttr(turId)}" hidden>
+          const turKeys = [...byTur.keys()].sort(
+            (a, b) => (Number(a) || 0) - (Number(b) || 0)
+          );
+          const turProms = [];
+          const turBlocks = turKeys
+            .map((tur) => {
+              const turLotes = (byTur.get(tur) || []).slice().sort((a, b) => {
+                const la = Number(String(a.loteNum).replace(/\D/g, "")) || 0;
+                const lb = Number(String(b.loteNum).replace(/\D/g, "")) || 0;
+                return la - lb || String(a.loteNum).localeCompare(String(b.loteNum), "es");
+              });
+              let tN = 0;
+              const turId = `${modId}|${tur}`;
+              const loteRows = turLotes
+                .map((L) => {
+                  tN += Number(L.sampleCount) || 0;
+                  const label = L.loteLabel || `Lote ${L.loteNum || L.lote || "—"}`;
+                  return `<tr class="lote-row is-collapsed" data-fundo-group="${escapeAttr(
+                    fundoId
+                  )}" data-mod-group="${escapeAttr(modId)}" data-tur-group="${escapeAttr(
+                    turId
+                  )}" hidden>
             <td>${escapeHtml(label)}</td>
-            ${promCell_(L.e2Avg)}${promCell_(L.e3Avg)}${promCell_(L.e4Avg)}${promCell_(L.e5Avg)}
+            ${stageCells_({
+              fc: L.fcAvg,
+              fa: L.faAvg,
+              cu: L.cuAvg,
+              e1: L.e1Avg,
+              e2: L.e2Avg,
+              e3: L.e3Avg,
+              e4: L.e4Avg,
+              e5: L.e5Avg,
+            })}
             ${totalCell_(L.total)}
           </tr>`;
-            })
-            .join("");
-          const turP1 = promByMuestras_(t1, tN);
-          const turP2 = promByMuestras_(t2, tN);
-          const turP3 = promByMuestras_(t3, tN);
-          const turP4 = promByMuestras_(t4, tN);
-          const turP5 = promByMuestras_(t5, tN);
-          const turTot = sumE1aE5_(turP1, turP2, turP3, turP4, turP5);
-          return `<tr class="tur-row is-accordion is-collapsed" data-mod-group="${escapeAttr(
-            groupId
-          )}" data-tur-toggle="${escapeAttr(turId)}" aria-expanded="false" hidden>
-          <td><span class="mod-caret" aria-hidden="true">▸</span> T${escapeHtml(
-            tur
+                })
+                .join("");
+              const turFc = meanOfNums_(turLotes.map((L) => L.fcAvg));
+              const turFa = meanOfNums_(turLotes.map((L) => L.faAvg));
+              const turCu = meanOfNums_(turLotes.map((L) => L.cuAvg));
+              const turP1 = meanOfNums_(turLotes.map((L) => L.e1Avg));
+              const turP2 = meanOfNums_(turLotes.map((L) => L.e2Avg));
+              const turP3 = meanOfNums_(turLotes.map((L) => L.e3Avg));
+              const turP4 = meanOfNums_(turLotes.map((L) => L.e4Avg));
+              const turP5 = meanOfNums_(turLotes.map((L) => L.e5Avg));
+              const turTot = sumE1aE5_(turP1, turP2, turP3, turP4, turP5);
+              turProms.push({
+                fc: turFc,
+                fa: turFa,
+                cu: turCu,
+                e1: turP1,
+                e2: turP2,
+                e3: turP3,
+                e4: turP4,
+                e5: turP5,
+              });
+              const turLabel = (() => {
+                const t = String(tur || "").trim();
+                if (isBlankHistToken_(t)) return "T—";
+                if (/^T\d+/i.test(t)) return t.toUpperCase();
+                return `T${t}`;
+              })();
+              return `<tr class="tur-row is-accordion is-collapsed" data-fundo-group="${escapeAttr(
+                fundoId
+              )}" data-mod-group="${escapeAttr(modId)}" data-tur-toggle="${escapeAttr(
+                turId
+              )}" aria-expanded="false" hidden>
+          <td><span class="mod-caret" aria-hidden="true">▸</span> ${escapeHtml(
+            turLabel
           )} <em class="mod-count">${turLotes.length} lote${
-            turLotes.length === 1 ? "" : "s"
-          } · ${tN} mues.</em></td>
-          ${promCell_(turP2)}${promCell_(turP3)}${promCell_(turP4)}${promCell_(turP5)}
+                turLotes.length === 1 ? "" : "s"
+              } · ${tN} mues.</em></td>
+          ${stageCells_({
+            fc: turFc,
+            fa: turFa,
+            cu: turCu,
+            e1: turP1,
+            e2: turP2,
+            e3: turP3,
+            e4: turP4,
+            e5: turP5,
+          })}
           ${totalCell_(turTot)}
         </tr>${loteRows}`;
+            })
+            .join("");
+
+          const modAvg = avgPackFrom_(turProms, (t) => t);
+          const modTot = sumE1aE5_(
+            modAvg.e1,
+            modAvg.e2,
+            modAvg.e3,
+            modAvg.e4,
+            modAvg.e5
+          );
+          modProms.push(modAvg);
+          return `<tr class="mod-row is-accordion is-collapsed" data-fundo-group="${escapeAttr(
+            fundoId
+          )}" data-mod-toggle="${escapeAttr(modId)}" aria-expanded="false" hidden>
+          <td><span class="mod-caret" aria-hidden="true">▸</span> ${escapeHtml(
+            mod
+          )} <em class="mod-count">${lotes.length} lote${
+            lotes.length === 1 ? "" : "s"
+          } · ${turKeys.length} turno${
+            turKeys.length === 1 ? "" : "s"
+          } · ${mN} mues.</em></td>
+          ${stageCells_(modAvg)}
+          ${totalCell_(modTot)}
+        </tr>${turBlocks}`;
         })
         .join("");
 
-      const modP1 = promByMuestras_(m1, mN);
-      const modP2 = promByMuestras_(m2, mN);
-      const modP3 = promByMuestras_(m3, mN);
-      const modP4 = promByMuestras_(m4, mN);
-      const modP5 = promByMuestras_(m5, mN);
-      const modTot = sumE1aE5_(modP1, modP2, modP3, modP4, modP5);
+      const fundoAvg = avgPackFrom_(modProms, (t) => t);
+      const fundoTot = sumE1aE5_(
+        fundoAvg.e1,
+        fundoAvg.e2,
+        fundoAvg.e3,
+        fundoAvg.e4,
+        fundoAvg.e5
+      );
       bodyRows.push(
-        `<tr class="mod-row is-accordion" data-mod-toggle="${escapeAttr(groupId)}" aria-expanded="false">
-          <td><span class="mod-caret" aria-hidden="true">▸</span> ${escapeHtml(mod)} <em class="mod-count">${
-          lotes.length
-        } lote${lotes.length === 1 ? "" : "s"} · ${turKeys.length} turno${
-          turKeys.length === 1 ? "" : "s"
-        } · ${mN} mues.</em></td>
-          ${promCell_(modP2)}${promCell_(modP3)}${promCell_(modP4)}${promCell_(modP5)}
-          ${totalCell_(modTot)}
-        </tr>${turBlocks}`
+        `<tr class="fundo-row is-accordion is-collapsed" data-fundo-toggle="${escapeAttr(
+          fundoId
+        )}" aria-expanded="false">
+          <td><span class="mod-caret" aria-hidden="true">▸</span> ${escapeHtml(
+            fundo
+          )} <em class="mod-count">${fundoLotes.length} lote${
+          fundoLotes.length === 1 ? "" : "s"
+        } · ${mods.length} mód. · ${fN} mues.</em></td>
+          ${stageCells_(fundoAvg)}
+          ${totalCell_(fundoTot)}
+        </tr>${modBlocks}`
       );
     });
 
@@ -4069,17 +4246,77 @@ QB.App = (() => {
     if (emptyEl) emptyEl.hidden = true;
 
     listEl.innerHTML = `<table class="hist-kg-table hist-kg-compact">
-      <thead><tr><th>Campo</th><th>E2</th><th>E3</th><th>E4</th><th>E5</th><th>Total</th></tr></thead>
+      <thead><tr>
+        <th>Campo</th>
+        <th>1) Flor cerrada</th>
+        <th>2) Flor abierta</th>
+        <th>3) Cuajo</th>
+        <th>4) E1</th>
+        <th>5) E2</th>
+        <th>6) E3</th>
+        <th>7) E4</th>
+        <th>8) E5</th>
+        <th>Total</th>
+      </tr></thead>
       <tbody>
         ${bodyRows.join("")}
-        <tr class="total-row"><td>Total</td>${promCell_(grandP2)}${promCell_(grandP3)}${promCell_(
-          grandP4
-        )}${promCell_(grandP5)}${totalCell_(grandTotal)}</tr>
+        <tr class="total-row"><td>Total</td>${stageCells_({
+          fc: grandFc,
+          fa: grandFa,
+          cu: grandCu,
+          e1: grandP1,
+          e2: grandP2,
+          e3: grandP3,
+          e4: grandP4,
+          e5: grandP5,
+        })}${totalCell_(grandTotal)}</tr>
       </tbody>
     </table>
     <p class="hist-kg-foot">${rows.length} lote${rows.length === 1 ? "" : "s"} · ${gN} muestra${
       gN === 1 ? "" : "s"
-    } · toca módulo · luego turno</p>`;
+    } · toca Licapa → módulo → turno → lote</p>`;
+
+    // Arranque: solo Licapa visible
+    listEl.querySelectorAll("tr.mod-row, tr.tur-row, tr.lote-row").forEach((row) => {
+      row.hidden = true;
+      row.classList.add("is-collapsed");
+      row.classList.remove("is-open");
+      if (row.hasAttribute("aria-expanded")) row.setAttribute("aria-expanded", "false");
+    });
+    listEl.querySelectorAll("tr.fundo-row[data-fundo-toggle]").forEach((row) => {
+      row.setAttribute("aria-expanded", "false");
+      row.classList.add("is-collapsed");
+      row.classList.remove("is-open");
+    });
+
+    listEl.querySelectorAll("[data-fundo-toggle]").forEach((tr) => {
+      tr.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (Date.now() < historialReadyAt_) return;
+        const fid = tr.getAttribute("data-fundo-toggle");
+        const open = tr.getAttribute("aria-expanded") === "true";
+        const next = !open;
+        tr.setAttribute("aria-expanded", next ? "true" : "false");
+        tr.classList.toggle("is-open", next);
+        tr.classList.toggle("is-collapsed", !next);
+        // Abrir Licapa → solo módulos (cerrados)
+        listEl.querySelectorAll("tr.mod-row[data-fundo-group]").forEach((row) => {
+          if (row.getAttribute("data-fundo-group") !== fid) return;
+          row.hidden = !next;
+          row.classList.add("is-collapsed");
+          row.classList.remove("is-open");
+          row.setAttribute("aria-expanded", "false");
+        });
+        listEl.querySelectorAll("tr.tur-row[data-fundo-group], tr.lote-row[data-fundo-group]").forEach((row) => {
+          if (row.getAttribute("data-fundo-group") !== fid) return;
+          row.hidden = true;
+          row.classList.add("is-collapsed");
+          row.classList.remove("is-open");
+          if (row.hasAttribute("aria-expanded")) row.setAttribute("aria-expanded", "false");
+        });
+      });
+    });
 
     listEl.querySelectorAll("[data-mod-toggle]").forEach((tr) => {
       tr.addEventListener("click", (e) => {
@@ -4091,22 +4328,19 @@ QB.App = (() => {
         const next = !open;
         tr.setAttribute("aria-expanded", next ? "true" : "false");
         tr.classList.toggle("is-open", next);
+        tr.classList.toggle("is-collapsed", !next);
         listEl.querySelectorAll("tr.tur-row[data-mod-group]").forEach((row) => {
           if (row.getAttribute("data-mod-group") !== gid) return;
           row.hidden = !next;
-          row.classList.toggle("is-collapsed", !next);
-          if (!next) {
-            row.setAttribute("aria-expanded", "false");
-            row.classList.remove("is-open");
-          }
+          row.classList.add("is-collapsed");
+          row.classList.remove("is-open");
+          row.setAttribute("aria-expanded", "false");
         });
-        if (!next) {
-          listEl.querySelectorAll("tr.lote-row[data-mod-group]").forEach((row) => {
-            if (row.getAttribute("data-mod-group") !== gid) return;
-            row.hidden = true;
-            row.classList.add("is-collapsed");
-          });
-        }
+        listEl.querySelectorAll("tr.lote-row[data-mod-group]").forEach((row) => {
+          if (row.getAttribute("data-mod-group") !== gid) return;
+          row.hidden = true;
+          row.classList.add("is-collapsed");
+        });
       });
     });
 
@@ -4120,6 +4354,7 @@ QB.App = (() => {
         const next = !open;
         tr.setAttribute("aria-expanded", next ? "true" : "false");
         tr.classList.toggle("is-open", next);
+        tr.classList.toggle("is-collapsed", !next);
         listEl.querySelectorAll("tr.lote-row[data-tur-group]").forEach((row) => {
           if (row.getAttribute("data-tur-group") !== tid) return;
           row.hidden = !next;

@@ -6,7 +6,7 @@ QB.CONFIG = {
   _ep: "",
   API_URL: "https://script.google.com/macros/s/AKfycbxxLAKdchGStfg2IIkaeJKgDdsRgTf9-s-jg3cYz6k2dgZcaJj-54CFLgwPled2fr24/exec",
   APP_NAME: "Q Berries · Fenología",
-  VERSION: "1.8.25",
+  VERSION: "1.8.34",
   PUBLIC_URL: "https://app-proyecciones.netlify.app",
   /** Muestras iniciales al crear cartilla (se pueden agregar más en campo) */
   SAMPLE_START: 1,
@@ -43,8 +43,8 @@ QB.FUNDOS = [
 /** Campos numéricos por muestra (orden de la cartilla) */
 QB.SAMPLE_FIELDS = [
   { id: "n_ramas", label: "N° Ramas", sheet: "N° Ramas" },
+  { id: "yemas_cerradas", label: "Yema Cerrada", sheet: "Yemas Cerradas" },
   { id: "yema_abierta", label: "Yema Abierta", sheet: "Yema Abierta" },
-  { id: "yemas_cerradas", label: "Yemas Cerradas", sheet: "Yemas Cerradas" },
   { id: "yemas_muertas", label: "Yemas Muertas", sheet: "Yemas Muertas" },
   { id: "boton_floral", label: "Botón Floral", sheet: "Botón Floral" },
   { id: "flor", label: "Flor", sheet: "Flor" },
@@ -75,9 +75,8 @@ QB.SHEET_HEADERS = [
   "Nombre",
   "N° Muestra",
   "N° Ramas",
-  "Yema Productiva",
-  "Yema Abierta",
   "Yemas Cerradas",
+  "Yema Abierta",
   "Yemas Muertas",
   "Botón Floral",
   "Flor",

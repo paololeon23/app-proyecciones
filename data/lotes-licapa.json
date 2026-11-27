@@ -23,7 +23,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M1T1LT5",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.28
   },
   {
     "lote": "6",
@@ -31,7 +32,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M1T2LT6",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.94
   },
   {
     "lote": "7",
@@ -39,7 +41,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M1T2LT7",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "8",
@@ -83,7 +86,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M1T3LT12",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.02
   },
   {
     "lote": "13",
@@ -91,7 +95,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M1T3LT13",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.02
   },
   {
     "lote": "14",
@@ -141,7 +146,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M1T4LT19",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.74
   },
   {
     "lote": "20",
@@ -149,7 +155,8 @@
     "turno": "5",
     "etapa": "Licapa I",
     "codLote": "M1T5LT20",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "21",
@@ -157,7 +164,8 @@
     "turno": "5",
     "etapa": "Licapa I",
     "codLote": "M1T5LT21",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.93
   },
   {
     "lote": "22",
@@ -201,7 +209,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M1T6LT26",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "27",
@@ -209,7 +218,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M1T6LT27",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "28",
@@ -217,7 +227,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M1T6LT28",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "29",
@@ -225,7 +236,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M1T7LT29",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.36
   },
   {
     "lote": "30",
@@ -233,7 +245,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M1T7LT30",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.95
   },
   {
     "lote": "31",
@@ -241,7 +254,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M1T7LT31",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "32",
@@ -267,7 +281,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M1T8LT34",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "35",
@@ -275,7 +290,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M1T8LT35",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "36",
@@ -283,7 +299,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M1T8LT36",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "37",
@@ -309,7 +326,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M1T9LT39",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "40",
@@ -335,7 +353,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M1T9LT42",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "43",
@@ -361,7 +380,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M1T10LT45",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.3
   },
   {
     "lote": "46",
@@ -369,7 +389,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M1T10LT46",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.52
   },
   {
     "lote": "47",
@@ -377,7 +398,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M2T1LT47",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.34
   },
   {
     "lote": "48",
@@ -394,7 +416,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M2T1LT49",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "50",
@@ -402,7 +425,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M2T1LT50",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "51",
@@ -419,7 +443,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M2T1LT52",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "53",
@@ -427,7 +452,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M2T2LT53",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "54",
@@ -435,7 +461,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M2T2LT54",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "55",
@@ -452,7 +479,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M2T2LT56",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.61
   },
   {
     "lote": "57",
@@ -469,7 +497,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M2T3LT58",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.15
   },
   {
     "lote": "59",
@@ -486,7 +515,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M2T3LT60",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "61",
@@ -503,7 +533,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M2T3LT62",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.63
   },
   {
     "lote": "63",
@@ -511,7 +542,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M2T3LT63",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.77
   },
   {
     "lote": "64",
@@ -519,7 +551,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M2T4LT64",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.7
   },
   {
     "lote": "65",
@@ -527,7 +560,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M2T4LT65",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "66",
@@ -544,7 +578,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M2T4LT67",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.67
   },
   {
     "lote": "68",
@@ -561,7 +596,8 @@
     "turno": "5",
     "etapa": "Licapa I",
     "codLote": "M2T5LT69",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "70",
@@ -587,7 +623,8 @@
     "turno": "5",
     "etapa": "Licapa I",
     "codLote": "M2T5LT72",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "73",
@@ -595,7 +632,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M2T6LT73",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "74",
@@ -621,7 +659,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M2T6LT76",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "77",
@@ -629,7 +668,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M2T7LT77",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "78",
@@ -646,7 +686,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M2T7LT79",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "80",
@@ -663,7 +704,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M2T8LT81",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.68
   },
   {
     "lote": "82",
@@ -671,7 +713,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M2T8LT82",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.68
   },
   {
     "lote": "83",
@@ -688,7 +731,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M2T8LT84",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.64
   },
   {
     "lote": "85",
@@ -705,7 +749,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M2T8LT86",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.07
   },
   {
     "lote": "87",
@@ -713,7 +758,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M2T9LT87",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "88",
@@ -730,7 +776,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M2T9LT89",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "90",
@@ -756,7 +803,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M2T10LT92",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "93",
@@ -773,7 +821,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M2T10LT94",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "95",
@@ -790,7 +839,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M3T1LT96",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "97",
@@ -807,7 +857,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M3T1LT98",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "99",
@@ -815,7 +866,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M3T2LT99",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "100",
@@ -832,7 +884,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M3T2LT101",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "102",
@@ -858,7 +911,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M3T3LT104",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "105",
@@ -884,7 +938,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M3T4LT107",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "108",
@@ -919,7 +974,8 @@
     "turno": "5",
     "etapa": "Licapa I",
     "codLote": "M3T5LT111",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "112",
@@ -945,7 +1001,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M3T6LT114",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "115",
@@ -962,7 +1019,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M3T6LT116",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "117",
@@ -970,7 +1028,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M3T6LT117",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "118",
@@ -987,7 +1046,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M3T7LT119",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "120",
@@ -1004,7 +1064,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M3T7LT121",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "122",
@@ -1012,7 +1073,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M3T7LT122",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "123",
@@ -1029,7 +1091,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M3T8LT124",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "125",
@@ -1037,7 +1100,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M3T8LT125",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "126",
@@ -1054,7 +1118,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M3T8LT127",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "128",
@@ -1071,7 +1136,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M3T9LT129",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.92
   },
   {
     "lote": "130",
@@ -1079,7 +1145,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M3T9LT130",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "131",
@@ -1096,7 +1163,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M3T9LT132",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "133",
@@ -1113,7 +1181,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M3T10LT134",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "135",
@@ -1130,7 +1199,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M3T10LT136",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "137",
@@ -1147,7 +1217,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M4T1LT138",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.54
   },
   {
     "lote": "139",
@@ -1155,7 +1226,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M4T1LT139",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.76
   },
   {
     "lote": "140",
@@ -1163,7 +1235,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M4T1LT140",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.9
   },
   {
     "lote": "141",
@@ -1171,7 +1244,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M4T1LT141",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.12
   },
   {
     "lote": "142",
@@ -1188,7 +1262,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M4T2LT143",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "144",
@@ -1205,7 +1280,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M4T2LT145",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "146",
@@ -1222,7 +1298,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M4T3LT147",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "148",
@@ -1239,7 +1316,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M4T3LT149",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "150",
@@ -1256,7 +1334,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M4T4LT151",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "152",
@@ -1273,7 +1352,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M4T4LT153",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "154",
@@ -1290,7 +1370,8 @@
     "turno": "5",
     "etapa": "Licapa I",
     "codLote": "M4T5LT155",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "156",
@@ -1307,7 +1388,8 @@
     "turno": "5",
     "etapa": "Licapa I",
     "codLote": "M4T5LT157",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "158",
@@ -1324,7 +1406,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M4T6LT159",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.9
   },
   {
     "lote": "160",
@@ -1341,7 +1424,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M4T6LT161",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.28
   },
   {
     "lote": "162",
@@ -1358,7 +1442,8 @@
     "turno": "6",
     "etapa": "Licapa I",
     "codLote": "M4T6LT163",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "164",
@@ -1375,7 +1460,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M4T7LT165",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "166",
@@ -1392,7 +1478,8 @@
     "turno": "7",
     "etapa": "Licapa I",
     "codLote": "M4T7LT167",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "168",
@@ -1409,7 +1496,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M4T8LT169",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "170",
@@ -1426,7 +1514,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M4T8LT171",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "172",
@@ -1443,7 +1532,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M4T9LT173",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.93
   },
   {
     "lote": "174",
@@ -1460,7 +1550,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M4T9LT175",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.8
   },
   {
     "lote": "176",
@@ -1477,7 +1568,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M4T10LT177",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "178",
@@ -1494,7 +1586,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M4T10LT179",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.49
   },
   {
     "lote": "180",
@@ -1502,7 +1595,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M4T10LT180",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.63
   },
   {
     "lote": "181",
@@ -1510,7 +1604,8 @@
     "turno": "10",
     "etapa": "Licapa I",
     "codLote": "M4T10LT181",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.22
   },
   {
     "lote": "182",
@@ -1527,7 +1622,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M5T1LT183",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "184",
@@ -1544,7 +1640,8 @@
     "turno": "1",
     "etapa": "Licapa I",
     "codLote": "M5T1LT185",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "186",
@@ -1552,7 +1649,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M5T2LT186",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "187",
@@ -1569,7 +1667,8 @@
     "turno": "2",
     "etapa": "Licapa I",
     "codLote": "M5T2LT188",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "189",
@@ -1595,7 +1694,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M5T3LT191",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "192",
@@ -1612,7 +1712,8 @@
     "turno": "3",
     "etapa": "Licapa I",
     "codLote": "M5T3LT193",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "194",
@@ -1620,7 +1721,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M5T4LT194",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "195",
@@ -1637,7 +1739,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M5T4LT196",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "197",
@@ -1654,7 +1757,8 @@
     "turno": "5",
     "etapa": "Licapa III",
     "codLote": "M10T5LT198",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.96
   },
   {
     "lote": "199",
@@ -1662,7 +1766,8 @@
     "turno": "5",
     "etapa": "Licapa III",
     "codLote": "M10T5LT199",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.9
   },
   {
     "lote": "200",
@@ -1670,7 +1775,8 @@
     "turno": "5",
     "etapa": "Licapa III",
     "codLote": "M10T5LT200",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.9
   },
   {
     "lote": "201",
@@ -1678,7 +1784,8 @@
     "turno": "5",
     "etapa": "Licapa III",
     "codLote": "M10T5LT201",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.8
   },
   {
     "lote": "202",
@@ -1686,7 +1793,8 @@
     "turno": "7",
     "etapa": "Licapa III",
     "codLote": "M10T7LT202",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.9
   },
   {
     "lote": "203",
@@ -1694,7 +1802,8 @@
     "turno": "6",
     "etapa": "Licapa III",
     "codLote": "M10T6LT203",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "204",
@@ -1702,7 +1811,8 @@
     "turno": "6",
     "etapa": "Licapa III",
     "codLote": "M10T6LT204",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.84
   },
   {
     "lote": "205",
@@ -1710,7 +1820,8 @@
     "turno": "6",
     "etapa": "Licapa III",
     "codLote": "M10T6LT205",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "206",
@@ -1718,7 +1829,8 @@
     "turno": "7",
     "etapa": "Licapa III",
     "codLote": "M10T7LT206",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.9
   },
   {
     "lote": "207",
@@ -1726,7 +1838,8 @@
     "turno": "7",
     "etapa": "Licapa III",
     "codLote": "M10T7LT207",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.94
   },
   {
     "lote": "208 B",
@@ -1734,7 +1847,8 @@
     "turno": "11",
     "etapa": "Licapa III",
     "codLote": "M10T11LT208B",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.9
   },
   {
     "lote": "208A",
@@ -1742,7 +1856,8 @@
     "turno": "11",
     "etapa": "Licapa III",
     "codLote": "M10T11LT208A",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.46
   },
   {
     "lote": "209",
@@ -1750,7 +1865,8 @@
     "turno": "11",
     "etapa": "Licapa III",
     "codLote": "M10T11LT209",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.94
   },
   {
     "lote": "210",
@@ -1758,7 +1874,8 @@
     "turno": "11",
     "etapa": "Licapa III",
     "codLote": "M10T11LT210",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.7
   },
   {
     "lote": "211",
@@ -1766,7 +1883,8 @@
     "turno": "11",
     "etapa": "Licapa III",
     "codLote": "M10T11LT211",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 2.0
   },
   {
     "lote": "212",
@@ -1774,7 +1892,8 @@
     "turno": "11",
     "etapa": "Licapa III",
     "codLote": "M10T11LT212",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 1.9
   },
   {
     "lote": "213",
@@ -1782,7 +1901,8 @@
     "turno": "8",
     "etapa": "Licapa II",
     "codLote": "M10T8LT213",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 2.13
   },
   {
     "lote": "214",
@@ -1790,7 +1910,8 @@
     "turno": "8",
     "etapa": "Licapa II",
     "codLote": "M10T8LT214",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 2.48
   },
   {
     "lote": "215",
@@ -1798,7 +1919,8 @@
     "turno": "8",
     "etapa": "Licapa II",
     "codLote": "M10T8LT215",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 2.23
   },
   {
     "lote": "216",
@@ -1806,7 +1928,8 @@
     "turno": "8",
     "etapa": "Licapa II",
     "codLote": "M10T8LT216",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 2.16
   },
   {
     "lote": "217",
@@ -1823,7 +1946,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M5T9LT218",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "219",
@@ -1840,7 +1964,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M5T9LT220",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "221",
@@ -1866,7 +1991,8 @@
     "turno": "10",
     "etapa": "Licapa II",
     "codLote": "M10T10LT223",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 1.12
   },
   {
     "lote": "224",
@@ -1874,7 +2000,8 @@
     "turno": "10",
     "etapa": "Licapa II",
     "codLote": "M10T10LT224",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 1.16
   },
   {
     "lote": "225",
@@ -1892,7 +2019,7 @@
     "etapa": "Licapa I",
     "codLote": "M5T11LT225",
     "variedad": "Sekoya Pop",
-    "area": 0.11
+    "area": 0.87
   },
   {
     "lote": "226",
@@ -1936,7 +2063,8 @@
     "turno": "11",
     "etapa": "Licapa I",
     "codLote": "M5T11LT230",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.93
   },
   {
     "lote": "231",
@@ -1944,7 +2072,8 @@
     "turno": "12",
     "etapa": "Licapa I",
     "codLote": "M5T12LT231",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "232",
@@ -1952,7 +2081,8 @@
     "turno": "13",
     "etapa": "Licapa I",
     "codLote": "M5T13LT232",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "233",
@@ -1960,7 +2090,8 @@
     "turno": "14",
     "etapa": "Licapa I",
     "codLote": "M5T14LT233",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "234",
@@ -1968,7 +2099,8 @@
     "turno": "11",
     "etapa": "Licapa I",
     "codLote": "M5T11LT234",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "235",
@@ -1976,7 +2108,8 @@
     "turno": "12",
     "etapa": "Licapa I",
     "codLote": "M5T12LT235",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "236",
@@ -1984,7 +2117,8 @@
     "turno": "13",
     "etapa": "Licapa I",
     "codLote": "M5T13LT236",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "237",
@@ -1992,7 +2126,8 @@
     "turno": "14",
     "etapa": "Licapa I",
     "codLote": "M5T14LT237",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "238",
@@ -2000,7 +2135,8 @@
     "turno": "15",
     "etapa": "Licapa I",
     "codLote": "M5T15LT238",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "239",
@@ -2008,7 +2144,8 @@
     "turno": "15",
     "etapa": "Licapa I",
     "codLote": "M5T15LT239",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "240",
@@ -2016,7 +2153,8 @@
     "turno": "15",
     "etapa": "Licapa I",
     "codLote": "M5T15LT240",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "241",
@@ -2024,7 +2162,8 @@
     "turno": "15",
     "etapa": "Licapa I",
     "codLote": "M5T15LT241",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "242",
@@ -2032,7 +2171,8 @@
     "turno": "15",
     "etapa": "Licapa I",
     "codLote": "M5T15LT242",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.81
   },
   {
     "lote": "243",
@@ -2040,7 +2180,8 @@
     "turno": "15",
     "etapa": "Licapa I",
     "codLote": "M5T15LT243",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.31
   },
   {
     "lote": "244",
@@ -2048,7 +2189,8 @@
     "turno": "16",
     "etapa": "Licapa I",
     "codLote": "M5T16LT244",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.9
   },
   {
     "lote": "245",
@@ -2056,7 +2198,8 @@
     "turno": "16",
     "etapa": "Licapa I",
     "codLote": "M5T16LT245",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.37
   },
   {
     "lote": "246",
@@ -2064,7 +2207,8 @@
     "turno": "16",
     "etapa": "Licapa I",
     "codLote": "M5T16LT246",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "247",
@@ -2072,7 +2216,8 @@
     "turno": "16",
     "etapa": "Licapa I",
     "codLote": "M5T16LT247",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "254",
@@ -2161,7 +2306,8 @@
     "turno": "9",
     "etapa": "Licapa II",
     "codLote": "M6T9LT263",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 0.98
   },
   {
     "lote": "266",
@@ -2250,7 +2396,8 @@
     "turno": "4",
     "etapa": "Licapa I",
     "codLote": "M2T4LT275",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "276",
@@ -2258,7 +2405,8 @@
     "turno": "8",
     "etapa": "Licapa I",
     "codLote": "M2T8LT276",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.53
   },
   {
     "lote": "277",
@@ -2275,7 +2423,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M4T9LT278",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.98
   },
   {
     "lote": "279",
@@ -2283,7 +2432,8 @@
     "turno": "9",
     "etapa": "Licapa I",
     "codLote": "M4T9LT279",
-    "variedad": "Sekoya Pop"
+    "variedad": "Sekoya Pop",
+    "area": 0.97
   },
   {
     "lote": "280",
@@ -2597,7 +2747,8 @@
     "turno": "8",
     "etapa": "Licapa II",
     "codLote": "M7T8LT314",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 0.91
   },
   {
     "lote": "315",
@@ -2731,7 +2882,8 @@
     "turno": "1",
     "etapa": "Licapa II",
     "codLote": "M8T1LT328b",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 0.31
   },
   {
     "lote": "329",
@@ -2991,7 +3143,8 @@
     "turno": "8",
     "etapa": "Licapa II",
     "codLote": "M8T8LT357",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 0.94
   },
   {
     "lote": "358",
@@ -3395,7 +3548,8 @@
     "turno": "7",
     "etapa": "Licapa II",
     "codLote": "M8T7LT402",
-    "variedad": "Mágica"
+    "variedad": "Mágica",
+    "area": 0.97
   },
   {
     "lote": "403",

@@ -5280,46 +5280,81 @@ body.create-modal-open > .form-actions {
 }
 .hist-kg-scroll {
   overflow-x: auto;
+  overflow-y: visible;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 .hist-kg-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   min-width: 520px;
   font-size: 0.68rem;
 }
 .hist-kg-table.hist-kg-compact {
-  min-width: 0;
-  width: 100%;
+  min-width: 920px;
+  width: max-content;
   table-layout: fixed;
 }
+/* Columna Campo: sticky + fondo OPACO (sin inherit → evita solape de headers) */
 .hist-kg-compact th:nth-child(1),
 .hist-kg-compact td:nth-child(1) {
-  width: 36%;
-  min-width: 0;
+  width: 168px;
+  min-width: 168px;
+  max-width: 168px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.25;
+  vertical-align: middle;
+  box-shadow: 4px 0 8px -4px rgba(31, 61, 42, 0.18);
+  font-weight: 800;
 }
-/* E2 E3 E4 E5 — columnas angostas */
-.hist-kg-compact th:nth-child(2),
-.hist-kg-compact td:nth-child(2),
-.hist-kg-compact th:nth-child(3),
-.hist-kg-compact td:nth-child(3),
-.hist-kg-compact th:nth-child(4),
-.hist-kg-compact td:nth-child(4),
-.hist-kg-compact th:nth-child(5),
-.hist-kg-compact td:nth-child(5) {
-  width: 11%;
-  padding-left: 2px;
-  padding-right: 2px;
+.hist-kg-compact th:nth-child(1) {
+  white-space: nowrap;
+}
+.hist-kg-compact thead th:nth-child(1) {
+  z-index: 4;
+  background: #2F6B3C !important;
+  color: #fff;
+}
+.hist-kg-compact tbody td:nth-child(1) {
+  background: #fff;
+}
+.hist-kg-compact tr.mod-row td:nth-child(1) {
+  background: #E8F3EA !important;
+}
+.hist-kg-compact tr.tur-row td:nth-child(1) {
+  background: #EAF3EC !important;
+}
+.hist-kg-compact tr.lote-row td:nth-child(1) {
+  background: #fff !important;
+}
+.hist-kg-compact tr.total-row td:nth-child(1) {
+  background: #1F3D2A !important;
+  color: #fff;
+}
+/* 1–8 etapas + Total */
+.hist-kg-compact th:nth-child(n+2),
+.hist-kg-compact td:nth-child(n+2) {
+  width: 86px;
+  min-width: 86px;
+  padding-left: 4px;
+  padding-right: 4px;
   text-align: center;
   vertical-align: middle;
+  white-space: nowrap;
+  font-size: 0.62rem;
 }
-.hist-kg-compact th:nth-child(6),
-.hist-kg-compact td:nth-child(6) {
-  width: 20%;
-  text-align: center;
-  vertical-align: middle;
+.hist-kg-compact th:nth-child(10),
+.hist-kg-compact td:nth-child(10) {
+  width: 72px;
+  min-width: 72px;
+  font-weight: 800;
 }
 .mod-row .hist-kg-stage-cell strong {
   font-size: 0.7rem;
@@ -5364,12 +5399,14 @@ body.create-modal-open > .form-actions {
   color: rgba(31, 61, 42, 0.35);
   font-weight: 700;
 }
+.fundo-row.is-accordion,
 .mod-row.is-accordion,
 .tur-row.is-accordion {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
+.fundo-row .mod-caret,
 .mod-row .mod-caret,
 .tur-row .mod-caret {
   display: inline-block;
@@ -5377,17 +5414,44 @@ body.create-modal-open > .form-actions {
   font-weight: 800;
   transition: transform 0.15s ease;
 }
+.fundo-row.is-open .mod-caret,
 .mod-row.is-open .mod-caret,
 .tur-row.is-open .mod-caret {
   transform: rotate(90deg);
 }
+.hist-kg-table tr.fundo-row td {
+  background: #D7EAD9;
+  font-weight: 850;
+  color: #1F3D2A;
+}
+.hist-kg-compact tr.fundo-row td:nth-child(1) {
+  background: #D7EAD9 !important;
+}
+.hist-kg-table tr.mod-row td:first-child {
+  padding-left: 14px;
+}
+.hist-kg-table tr.tur-row td:first-child {
+  padding-left: 22px;
+}
+.hist-kg-table tr.lote-row td:first-child {
+  padding-left: 32px;
+}
+.fundo-row.is-accordion:active {
+  filter: brightness(0.97);
+}
+.fundo-row .mod-count,
 .mod-row .mod-count,
 .tur-row .mod-count {
+  display: block;
   font-style: normal;
-  font-size: 0.68rem;
+  font-size: 0.58rem;
   font-weight: 700;
   opacity: 0.65;
-  margin-left: 6px;
+  margin: 3px 0 0;
+  padding-left: 1.15em;
+  line-height: 1.25;
+  white-space: normal;
+  overflow: visible;
 }
 .mod-row.is-accordion:active,
 .tur-row.is-accordion:active {
@@ -5747,22 +5811,28 @@ body.create-modal-open > .form-actions {
 .hist-kg-table th {
   position: sticky;
   top: 0;
+  z-index: 3;
   background: #2F6B3C;
   color: #fff;
   font-weight: 750;
   text-align: left;
-  padding: 5px 6px;
+  padding: 7px 6px;
   white-space: nowrap;
-  font-size: 0.64rem;
+  font-size: 0.62rem;
+  box-sizing: border-box;
+}
+.hist-kg-table th:nth-child(n+2) {
+  text-align: center;
 }
 .hist-kg-table td {
-  padding: 5px 6px;
+  padding: 7px 6px;
   border-bottom: 1px solid rgba(31, 61, 42, 0.08);
   font-variant-numeric: tabular-nums;
   font-weight: 650;
   color: var(--qb-slate);
   white-space: nowrap;
   font-size: 0.68rem;
+  box-sizing: border-box;
 }
 .hist-kg-table tr.mod-row td {
   background: #E8F3EA;
@@ -5774,7 +5844,7 @@ body.create-modal-open > .form-actions {
   color: var(--qb-forest);
 }
 .hist-kg-table tr.lote-row td:first-child {
-  padding-left: 28px;
+  padding-left: 18px;
 }
 .hist-kg-table tr.total-row td {
   background: #1F3D2A;
@@ -5787,6 +5857,8 @@ body.create-modal-open > .form-actions {
   font-weight: 700;
   color: var(--qb-muted);
   border-top: 1px solid rgba(31, 61, 42, 0.08);
+  white-space: normal;
+  overflow: visible;
 }
 
 .cartilla-obs textarea:focus {
